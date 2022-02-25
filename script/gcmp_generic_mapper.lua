@@ -1103,8 +1103,8 @@ local function stretch_map(dir,x,y,z)
     -- stretches a map to make room for just added room that would overlap with existing room
     local dx,dy,dz
     if not dir then return end
-    for k,v in pairs(getAreaRooms(map.currentArea)) do
-        if v ~= map.currentRoom then
+    for k,v in pairs(getAreaRooms(map.currentRoomArea)) do
+        if v ~= map.currentRoomID then
             dx,dy,dz = getRoomCoordinates(v)
             if dx >= x and string.find(dir,"east") then
                 dx = dx + 1
