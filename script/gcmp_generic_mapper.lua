@@ -158,15 +158,9 @@ function map.eventHandler(event, ...)
         connect_rooms(map.prevRoomID, map.currentRoomID, dir)
         centerview(map.currentRoomID)
 
-    elseif event == "onNewRoom" then
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
         end
-    elseif event == "onForcedMove" then
-        map.echo("onForcedMove",true)
-        capture_move_cmd(arg[1],arg[2]=="true")
-    elseif event == "onNewLine" then
-        grab_line()
     elseif event == "sysDataSendRequest" then
         capture_move_cmd(arg[1])
         -- check to prevent multiple version checks in a row without user intervention
@@ -740,7 +734,7 @@ function map.start_mapping(area_name)
         if map.currentRoom and getRoomName(map.currentRoom) == map.currentName then
             map.set_area(area_name)
         else
-            create_room(map.currentName, map.currentExits, nil, {0,0,0})
+            create_room(nil, {0,0,0})
         end
     elseif map.currentRoom and map.currentArea ~= getRoomArea(map.currentRoom) then
         map.set_area(area_name)
@@ -1222,12 +1216,10 @@ local function move_map()
     end
 end
 
-local function capture_move_cmd(dir,priority)
+local function capture_move_cmd(dir)
     -- captures valid movement commands
     local configs = map.configs
-    if configs.clear_lines_on_send then
-        lines = {}
-    end
+
     dir = string.lower(dir)
     if dir == "/" then dir = "recall" end
     if dir == configs.lang_dirs['l'] then dir = configs.lang_dirs['look'] end
@@ -1236,34 +1228,16 @@ local function capture_move_cmd(dir,priority)
     end
     local door = string.match(dir,"open (%a+)")
     if map.mapping and door and (exitmap[door] or short[door]) then
-        local doors = getDoors(map.currentRoom)
+        local doors = getDoors(map.currentRoomID)
         if not doors[door] and not doors[short[door]] then
             map.set_door(door,"","")
         end
     end
     local portal = string.match(dir,"enter (%a+)")
     if map.mapping and portal then
-        local portals = getSpecialExitsSwap(map.currentRoom)
+        local portals = getSpecialExitsSwap(map.currentRoomID)
         if not portals[dir] then
             map.set_portal(dir, true)
-        end
-    end
-    if table.contains(exitmap,dir) or string.starts(dir,"enter ") or dir == "recall" then
-        if priority then
-            table.insert(move_queue,1,exitmap[dir] or dir)
-        else
-            table.insert(move_queue,exitmap[dir] or dir)
-        end
-    elseif configs.search_on_look and dir == configs.lang_dirs['look'] then
-        table.insert(move_queue, dir)
-    elseif map.currentRoom then
-        local special = getSpecialExitsSwap(map.currentRoom) or {}
-        if special[dir] then
-            if priority then
-                table.insert(move_queue,1,dir)
-            else
-                table.insert(move_queue,dir)
-            end
         end
     end
 end
