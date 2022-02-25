@@ -566,11 +566,6 @@ map.help.quick_start = [[
     <link: quick_start>map basics</link> (quick start guide)
     ----------------------------------------
 
-    Mudlet Mapper works in tandem with a script, and this generic mapper script needs
-    to know 2 things to work:
-      - <dim_grey>room name<reset> $ROOM_NAME_STATUS ($ROOM_NAME)
-      - <dim_grey>exits<reset>     $ROOM_EXITS_STATUS ($ROOM_EXITS)
-
     1. <link: start mapping>start mapping <optional area name></link>
        If both room name and exits are good, you can start mapping! Give it the
        area name you're currently in, usually optional but required for the first one.

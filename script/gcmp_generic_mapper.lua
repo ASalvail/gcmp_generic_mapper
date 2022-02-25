@@ -183,16 +183,6 @@ local function config()
     end
 end
 
-local function parse_help_text(text)
-  text = text:gsub("%$ROOM_NAME_STATUS", (map.currentName and map.currentName ~= "") and '✔️' or '❌')
-  text = text:gsub("%$ROOM_NAME", map.currentName or '')
-
-  text = text:gsub("%$ROOM_EXITS_STATUS", (not map.currentExits or table.is_empty(map.currentExits)) and '❌' or '✔️')
-  text = text:gsub("%$ROOM_EXITS", map.currentExits and table.concat(map.currentExits, ' ') or '')
-
-  return text
-end
-
 function map.show_help(cmd)
     if cmd and cmd ~= "" then
         if cmd:starts("map ") then cmd = cmd:sub(5) end
@@ -204,7 +194,7 @@ function map.show_help(cmd)
         cmd = 1
     end
 
-    for w in parse_help_text(map.help[cmd]):gmatch("[^\n]*\n") do
+    for w in map.help[cmd]:gmatch("[^\n]*\n") do
         local url, target = rex.match(w, [[<(url)?link: ([^>]+)>]])
         -- lrexlib returns a non-capture as 'false', so determine which variable the capture went into
         if target == nil then target = url end
