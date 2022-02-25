@@ -30,41 +30,6 @@ string.ends = oldstring.ends
 local profilePath = getMudletHomeDir()
 profilePath = profilePath:gsub("\\","/")
 
-map.defaults = {
-    mode = "normal", -- can be lazy, simple, normal, or complex
-    stretch_map = true,
-    search_on_look = true,
-    speedwalk_delay = 1,
-    speedwalk_wait = true,
-    speedwalk_random = true,
-    max_search_distance = 1,
-    clear_lines_on_send = true,
-    map_window = {
-        x = 0,
-        y = 0,
-        w = "30%",
-        h = "40%",
-        origin = "topright",
-        shown = false,
-    },
-    prompt_test_patterns = {"^%[?%a*%]?<.*>", "^%[.*%]%s*>", "^%w*[%.?!:]*>", "^%[.*%]", "^[Hh][Pp]:.*>"},
-    custom_exits = {},  -- format: short_exit = {long_exit, reverse_exit, x_dif, y_dif, z_dif}
-                        -- ex: { us = {"upsouth", "downnorth", 0, -1, 1}, dn = {"downnorth", "upsouth", 0, 1, -1} }
-    custom_name_search = true,
-    use_translation = true,
-    lang_dirs = {n = 'n', ne = 'ne', nw = 'nw', e = 'e', w = 'w', s = 's', se = 'se', sw = 'sw',
-        u = 'u', d = 'd', ["in"] = 'in', out = 'out', north = 'north', northeast = 'northeast',
-        east = 'east', west = 'west', south = 'south', southeast = 'southeast', southwest = 'southwest',
-        northwest = 'northwest', up = 'up', down = 'down', l = 'l', look = 'look',
-        ed = 'ed', eu = 'eu', eastdown = 'eastdown', eastup = 'eastup',
-        nd = 'nd', nu = 'nu', northdown = 'northdown', northup = 'northup',
-        sd = 'sd', su = 'su', southdown = 'southdown', southup = 'southup',
-        wd = 'wd', wu = 'wu', westdown = 'westdown', westup = 'westup',
-    },
-    debug = false,
-    download_path = "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper",
-}
-
 local move_queue, lines = {}, {}
 local find_portal, vision_fail, room_detected, random_move, force_portal, find_prompt, downloading, walking, help_shown
 local mt = getmetatable(map) or {}
@@ -116,6 +81,145 @@ local wait_echo = {}
 local mapper_tag = "<112,229,0>(<73,149,0>mapper<112,229,0>): <255,255,255>"
 local debug_tag = "<255,165,0>(<200,120,0>debug<255,165,0>): <255,255,255>"
 local err_tag = "<255,0,0>(<178,34,34>error<255,0,0>): <255,255,255>"
+
+-----------------
+-- Mapping Events
+-----------------
+function map.eventHandler(event, ...)
+    if event == "onNewRoom" then
+        handle_exits(arg[1])
+        if walking and map.configs.speedwalk_wait then
+            continue_walk(true)
+        end
+    elseif event == "onPrompt" then
+        if map.prompt.exits and map.prompt.exits ~= "" then
+            raiseEvent("onNewRoom")
+        end
+        print_wait_echoes()
+        map.echo("Prompt Captured",true)
+    elseif event == "onMoveFail" then
+        map.echo("onMoveFail",true)
+        table.remove(move_queue,1)
+    elseif event == "onVisionFail" then
+        map.echo("onVisionFail",true)
+        vision_fail = true
+        capture_room_info()
+    elseif event == "onRandomMove" then
+        map.echo("onRandomMove",true)
+        random_move = true
+        move_queue = {}
+    elseif event == "onForcedMove" then
+        map.echo("onForcedMove",true)
+        capture_move_cmd(arg[1],arg[2]=="true")
+    elseif event == "onNewLine" then
+        grab_line()
+    elseif event == "sysDataSendRequest" then
+        capture_move_cmd(arg[1])
+        -- check to prevent multiple version checks in a row without user intervention
+        if map.update_waiting and map.update_timer then
+            map.update_waiting = nil
+        -- check to ensure version check cycle is started
+        elseif not map.update_waiting and not map.update_timer then
+            map.checkVersion()
+        end
+    elseif event == "sysDownloadDone" and downloading then
+        local file = arg[1]
+        if string.ends(file,"/map.dat") then
+            loadMap(file)
+            downloading = false
+            map.echo("Map File Loaded.")
+        elseif string.ends(file,"/versions.lua") then
+            check_version()
+        elseif string.ends(file,"/generic_mapper.xml") then
+            update_version()
+        end
+    elseif event == "sysDownloadError" and downloading then
+        local file = arg[1]
+        if string.ends(file,"/versions.lua") and mudlet.translations.interfacelanguage == "zh_CN" then
+            -- update to the current download path for chinese user
+            if map.configs.download_path == "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper" then
+                map.configs.download_path = "https://gitee.com/mudlet/Mudlet/raw/development/src/mudlet-lua/lua/generic-mapper"
+                map.checkVersion()
+            end
+        end
+    elseif event == "sysLoadEvent" or event == "sysInstall" then
+        config()
+    elseif event == "mapOpenEvent" then
+        if not help_shown and not map.save.prompt_pattern[map.character or ""] then
+            map.find_prompt()
+            send(map.configs.lang_dirs['look'], true)
+            tempTimer(3, function() map.show_help("quick_start"); help_shown = true end)
+        end
+    elseif event == "mapStop" then
+        map.set("mapping", false)
+        walking = false
+        map.echo("Mapping and speedwalking stopped.")
+    elseif event == "sysManualLocationSetEvent" then
+      set_room(arg[1])
+    elseif event == "sysUninstallPackage" and not map.updatingMapper and arg[1] == "generic_mapper" then
+        for _,id in ipairs(map.registeredEvents) do
+            killAnonymousEventHandler(id)
+        end
+    end
+end
+
+map.registeredEvents = {
+registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
+registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
+registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
+registerAnonymousEventHandler("sysConnectionEvent", "map.eventHandler"),
+registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
+registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
+registerAnonymousEventHandler("onMoveFail", "map.eventHandler"),
+registerAnonymousEventHandler("onVisionFail", "map.eventHandler"),
+registerAnonymousEventHandler("onRandomMove", "map.eventHandler"),
+registerAnonymousEventHandler("onForcedMove", "map.eventHandler"),
+registerAnonymousEventHandler("onNewRoom", "map.eventHandler"),
+registerAnonymousEventHandler("onNewLine", "map.eventHandler"),
+registerAnonymousEventHandler("mapOpenEvent", "map.eventHandler"),
+registerAnonymousEventHandler("mapStop", "map.eventHandler"),
+registerAnonymousEventHandler("onPrompt", "map.eventHandler"),
+registerAnonymousEventHandler("sysManualLocationSetEvent", "map.eventHandler"),
+registerAnonymousEventHandler("sysUninstallPackage", "map.eventHandler")
+}
+
+--------------------------
+-- Configuration functions
+--------------------------
+map.defaults = {
+    mode = "normal", -- can be lazy, simple, normal, or complex
+    stretch_map = true,
+    search_on_look = true,
+    speedwalk_delay = 1,
+    speedwalk_wait = true,
+    speedwalk_random = true,
+    max_search_distance = 1,
+    clear_lines_on_send = true,
+    map_window = {
+        x = 0,
+        y = 0,
+        w = "30%",
+        h = "40%",
+        origin = "topright",
+        shown = false,
+    },
+    prompt_test_patterns = {"^%[?%a*%]?<.*>", "^%[.*%]%s*>", "^%w*[%.?!:]*>", "^%[.*%]", "^[Hh][Pp]:.*>"},
+    custom_exits = {},  -- format: short_exit = {long_exit, reverse_exit, x_dif, y_dif, z_dif}
+                        -- ex: { us = {"upsouth", "downnorth", 0, -1, 1}, dn = {"downnorth", "upsouth", 0, 1, -1} }
+    custom_name_search = true,
+    use_translation = true,
+    lang_dirs = {n = 'n', ne = 'ne', nw = 'nw', e = 'e', w = 'w', s = 's', se = 'se', sw = 'sw',
+        u = 'u', d = 'd', ["in"] = 'in', out = 'out', north = 'north', northeast = 'northeast',
+        east = 'east', west = 'west', south = 'south', southeast = 'southeast', southwest = 'southwest',
+        northwest = 'northwest', up = 'up', down = 'down', l = 'l', look = 'look',
+        ed = 'ed', eu = 'eu', eastdown = 'eastdown', eastup = 'eastup',
+        nd = 'nd', nu = 'nu', northdown = 'northdown', northup = 'northup',
+        sd = 'sd', su = 'su', southdown = 'southdown', southup = 'southup',
+        wd = 'wd', wu = 'wu', westdown = 'westdown', westup = 'westup',
+    },
+    debug = false,
+    download_path = "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper",
+}
 
 local function config()
     local defaults = map.defaults
@@ -260,6 +364,24 @@ function map.setConfigs(key, val, sub_key)
     config()
 end
 
+function map.load_map(address)
+    local path = profilePath .. "/map downloads/map.dat"
+    if not address then
+        loadMap(path)
+        map.echo("Map reloaded from local copy.")
+    else
+        if not string.match(address,"/[%a_]+%.dat$") then
+            address = address .. "/map.dat"
+        end
+        downloading = true
+        downloadFile(path, address)
+        map.echo(string.format("Downloading map file from: %s.",address))
+    end
+end
+
+---------------------
+-- Printing Functions
+---------------------
 local function show_err(msg,debug)
     map.echo(msg,debug,true)
     error(msg,2)
@@ -294,6 +416,520 @@ function map.echo(what, debug, err, wait)
     print_echoes(what, debug, err)
 end
 
+function map.export_area(name)
+    -- used to export a single area to a file
+    local areas = getAreaTable()
+    name = string.lower(name)
+    for k,v in pairs(areas) do
+        if name == string.lower(k) then name = k end
+    end
+    if not areas[name] then
+        show_err("No such area.")
+    end
+    local rooms = getAreaRooms(areas[name])
+    local tmp = {}
+    for k,v in pairs(rooms) do
+        tmp[v] = v
+    end
+    rooms = tmp
+    local tbl = {}
+    tbl.name = name
+    tbl.rooms = {}
+    tbl.exits = {}
+    tbl.special = {}
+    local rname, exits, stubs, doors, special, portals, door_up, door_down, coords
+    for k,v in pairs(rooms) do
+        rname = getRoomName(v)
+        exits = getRoomExits(v)
+        stubs = getExitStubs(v)
+        doors = getDoors(v)
+        special = getSpecialExitsSwap(v)
+        portals = getRoomUserData(v,"portals") or ""
+        coords = {getRoomCoordinates(v)}
+        tbl.rooms[v] = {name = rname, coords = coords, exits = exits, stubs = stubs, doors = doors, door_up = door_up,
+            door_down = door_down, door_in = door_in, door_out = door_out, special = special, portals = portals}
+        tmp = {}
+        for k1,v1 in pairs(exits) do
+            if not table.contains(rooms,v1) then
+                tmp[k1] = {v1, getRoomName(v1)}
+            end
+        end
+        if not table.is_empty(tmp) then
+            tbl.exits[v] = tmp
+        end
+        tmp = {}
+        for k1,v1 in pairs(special) do
+            if not table.contains(rooms,v1) then
+                tmp[k1] = {v1, getRoomName(v1)}
+            end
+        end
+        if not table.is_empty(tmp) then
+            tbl.special[v] = tmp
+        end
+    end
+    local path = profilePath.."/"..string.gsub(string.lower(name),"%s","_")..".dat"
+    table.save(path,tbl)
+    map.echo("Area " .. name .. " exported to " .. path)
+end
+
+function map.import_area(name)
+    name = profilePath .. "/" .. string.gsub(string.lower(name),"%s","_") .. ".dat"
+    local tbl = {}
+    table.load(name,tbl)
+    if table.is_empty(tbl) then
+        show_err("No file found")
+    end
+    local areas = getAreaTable()
+    local areaID = areas[tbl.name] or addAreaName(tbl.name)
+    local rooms = {}
+    local ID
+    for k,v in pairs(tbl.rooms) do
+        ID = createRoomID()
+        rooms[k] = ID
+        addRoom(ID)
+        setRoomName(ID,v.name)
+        setRoomArea(ID,areaID)
+        setRoomCoordinates(ID,unpack(v.coords))
+        if type(v.stubs) == "table" then
+            for i,j in pairs(v.stubs) do
+                setExitStub(ID,j,true)
+            end
+        end
+        for i,j in pairs(v.doors) do
+            setDoor(ID,i,j)
+        end
+        setRoomUserData(ID,"portals",v.portals)
+    end
+    for k,v in pairs(tbl.rooms) do
+        for i,j in pairs(v.exits) do
+            if rooms[j] then
+                connect_rooms(rooms[k],rooms[j],i)
+            end
+        end
+        for i,j in pairs(v.special) do
+            if rooms[j] then
+                addSpecialExit(rooms[k],rooms[j],i)
+            end
+        end
+    end
+    for k,v in pairs(tbl.exits) do
+        for i,j in pairs(v) do
+            if getRoomName(j[1]) == j[2] then
+                connect_rooms(rooms[k],j[1],i)
+            end
+        end
+    end
+    for k,v in pairs(tbl.special) do
+        for i,j in pairs(v) do
+            addSpecialExit(k,j[1],i)
+        end
+    end
+    map.fix_portals()
+    map.echo("Area " .. tbl.name .. " imported from " .. name)
+end
+
+function map.echoRoomList(areaname, exact)
+    local areaid, msg, multiples
+    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
+    if tonumber(areaname) then
+        areaid = tonumber(areaname)
+        msg = getAreaTableSwap()[areaid]
+    else
+        areaid, msg, multiples = map.findAreaID(areaname, exact)
+    end
+    if areaid then
+        local roomlist, endresult = getAreaRooms(areaid) or {}, {}
+
+        -- obtain a room list for each of the room IDs we got
+        local getRoomName = getRoomName
+        for _, id in pairs(roomlist) do
+            endresult[id] = getRoomName(id)
+        end
+        roomlist[#roomlist+1], roomlist[0] = roomlist[0], nil
+        -- sort room IDs so we can display them in order
+        table.sort(roomlist)
+
+        local echoLink, format, fg, echo = echoLink, string.format, fg, cecho
+        -- now display something half-decent looking
+        cecho(format("<%s>List of all rooms in <%s>%s<%s> (areaID <%s>%s<%s> - <%s>%d<%s> rooms):\n",
+            listcolor, othercolor, msg, listcolor, othercolor, areaid, listcolor, othercolor, #roomlist, listcolor))
+        -- use pairs, as we can have gaps between room IDs
+        for _, roomid in pairs(roomlist) do
+            local roomname = endresult[roomid]
+            cechoLink(format("<%s>%7s",othercolor,roomid), 'map.speedwalk('..roomid..')',
+                format("Go to %s (%s)", roomid, tostring(roomname)), true)
+            cecho(format("<%s>: <%s>%s<%s>.\n", listcolor, othercolor, roomname, listcolor))
+        end
+    elseif not areaid and #multiples > 0 then
+        local allareas, format = getAreaTable(), string.format
+        local function countrooms(areaname)
+            local areaid = allareas[areaname]
+            local allrooms = getAreaRooms(areaid) or {}
+            local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
+            return areac
+        end
+        map.echo("For which area would you want to list rooms for?")
+        for _, areaname in ipairs(multiples) do
+            echo("  ")
+            setUnderline(true)
+            cechoLink(format("<%s>%-40s (%d rooms)", othercolor, areaname, countrooms(areaname)),
+                'map.echoRoomList("'..areaname..'", true)', "Click to view the room list for "..areaname, true)
+            setUnderline(false)
+            echo("\n")
+        end
+    else
+        map.echo(string.format("Don't know of any area named '%s'.", areaname),false,true)
+    end
+    resetFormat()
+end
+
+function map.echoAreaList()
+    local totalroomcount = 0
+    local rlist = getAreaTableSwap()
+    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
+
+    -- count the amount of rooms in an area, taking care to count the room in the 0th
+    -- index as well if there is one
+    -- saves the total room count on the side as well
+    local function countrooms(areaid)
+        local allrooms = getAreaRooms(areaid) or {}
+        local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
+        totalroomcount = totalroomcount + areac
+        return areac
+    end
+
+    local getAreaRooms, cecho, fg, echoLink, format = getAreaRooms, cecho, fg, echoLink, string.format
+    cecho(format("<%s>List of all areas we know of (click to view room list):\n",listcolor))
+    for id = 1,table.maxn(rlist) do
+        if rlist[id] then
+            cecho(format("<%s>%7d ", othercolor, id))
+            fg(listcolor)
+            echoLink(format("%-40s (%d rooms)",rlist[id],countrooms(id)), 'map.echoRoomList("'..id..'", true)',
+                "View the room list for "..rlist[id], true)
+            echo("\n")
+        end
+    end
+    cecho(string.format("<%s>Total amount of rooms in this map: %s\n", listcolor, totalroomcount))
+end
+
+---------------
+-- Map Commands
+---------------
+function map.set_exit(dir,roomID)
+    -- used to set unusual exits from the room you are standing in
+    if map.mapping then
+        roomID = tonumber(roomID)
+        if not roomID then
+            show_err("Set Exit: Invalid Room ID")
+        end
+        if not table.contains(exitmap,dir) and not string.starts(dir, "-p ") then
+            show_err("Set Exit: Invalid Direction")
+        end
+
+        if not string.starts(dir, "-p ") then
+            local exit
+            if stubmap[exitmap[dir] or dir] <= 12 then
+                exit = short[exitmap[dir] or dir]
+                setExit(map.currentRoom,roomID,exit)
+            else
+                -- check handling of custom exits here
+                exit = exitmap[dir] or dir
+                exit = "exit " .. exit
+                setRoomUserData(map.currentRoom,exit,roomID)
+            end
+            map.echo("Exit " .. dir .. " now goes to roomID " .. roomID)
+        else
+            dir = string.gsub(dir,"^-p ","")
+            addSpecialExit(map.currentRoom,roomID,dir)
+            map.echo("Special exit '" .. dir .. "' now goes to roomID " .. roomID)
+        end
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.set_recall()
+    -- assigned the current room to be recall for the current character
+    map.save.recall[map.character] = map.currentRoom
+    table.save(profilePath .. "/map downloads/map_save.dat",map.save)
+    map.echo("Recall room set to: " .. getRoomName(map.currentRoom) .. ".")
+end
+
+function map.set_portal(name, is_auto)
+    -- creates a new portal in the room
+    if map.mapping then
+        if not string.starts(name,"-f ") then
+            find_portal = name
+        else
+            name = string.gsub(name,"^-f ","")
+            force_portal = name
+        end
+        move_queue = {name}
+        if not is_auto then
+            send(name)
+        end
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.set_mode(mode)
+    -- switches mapping modes
+    if not table.contains({"lazy","simple","normal","complex"},mode) then
+        show_err("Invalid Map Mode, must be 'lazy', 'simple', 'normal' or 'complex'.")
+    end
+    map.set("mode", mode)
+    map.echo("Current mode set to: " .. mode)
+end
+
+function map.start_mapping(area_name)
+    -- starts mapping, and sets the current area to the given one, or uses the current one
+    if not map.currentName then
+        show_err("Room detection not yet working, see <yellow>map basics<reset> for guidance.")
+    end
+    local rooms
+    move_queue = {}
+    area_name = area_name ~= "" and area_name or nil
+    if map.currentArea and not area_name then
+        local areas = getAreaTableSwap()
+        area_name = areas[map.currentArea]
+    end
+    if not area_name then
+        show_err("You haven't started mapping yet, how should the first area be called? Set it with: <yellow>start mapping <area name><reset>")
+    end
+    map.echo("Now mapping in area: " .. area_name)
+    map.set("mapping", true)
+    find_area(area_name)
+    rooms = find_room(map.currentName, map.currentArea)
+    if table.is_empty(rooms) then
+        if map.currentRoom and getRoomName(map.currentRoom) == map.currentName then
+            map.set_area(area_name)
+        else
+            create_room(map.currentName, map.currentExits, nil, {0,0,0})
+        end
+    elseif map.currentRoom and map.currentArea ~= getRoomArea(map.currentRoom) then
+        map.set_area(area_name)
+    end
+end
+
+function map.stop_mapping()
+    map.set("mapping", false)
+    map.echo("Mapping off.")
+end
+
+function map.clear_moves()
+    local commands_in_queue = #move_queue
+    move_queue = {}
+    map.echo("Move queue cleared, "..commands_in_queue.." commands removed.")
+end
+
+function map.show_moves()
+    map.echo("Moves: "..(move_queue and table.concat(move_queue, ', ') or '(queue empty)'))
+end
+
+function map.set_area(name)
+    -- assigns the current room to the area given, creates the area if necessary
+    if map.mapping then
+        find_area(name)
+        if map.currentRoom and getRoomArea(map.currentRoom) ~= map.currentArea then
+            setRoomArea(map.currentRoom,map.currentArea)
+            set_room(map.currentRoom)
+        end
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.set_door(dir,status,one_way)
+    -- adds a door on a given exit
+    if map.mapping then
+        if not map.currentRoom then
+            show_err("Make Door: No room found.")
+        end
+        dir = exitmap[dir] or dir
+        if not stubmap[dir] then
+            show_err("Make Door: Invalid direction.")
+        end
+        status = (status ~= "" and status) or "closed"
+        one_way = (one_way ~= "" and one_way) or "no"
+        if not table.contains({"yes","no"},one_way) then
+            show_err("Make Door: Invalid one-way status, must be yes or no.")
+        end
+
+        local exits = getRoomExits(map.currentRoom)
+        local exit
+        -- check handling of custom exits here
+        for i = 13,#stubmap do
+            exit = "exit " .. stubmap[i]
+            exits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoom,exit))
+        end
+        local target_room = exits[dir]
+        if target_room then
+            exits = getRoomExits(target_room)
+            -- check handling of custom exits here
+            for i = 13,#stubmap do
+                exit = "exit " .. stubmap[i]
+                exits[stubmap[i]] = tonumber(getRoomUserData(target_room,exit))
+            end
+        end
+        if one_way == "no" and (target_room and exits[reverse_dirs[dir]] == map.currentRoom) then
+            add_door(target_room,reverse_dirs[dir],status)
+        end
+        add_door(map.currentRoom,dir,status)
+        map.echo(string.format("Adding %s door to the %s", status, dir))
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.shift_room(dir)
+    -- shifts a room around on the map
+    if map.mapping then
+        dir = exitmap[dir] or (table.contains(exitmap,dir) and dir)
+        if not dir then
+            show_err("Shift Room: Exit not found")
+        end
+        local x,y,z = getRoomCoordinates(map.currentRoom)
+        dir = stubmap[dir]
+        local coords = coordmap[dir]
+        x = x + coords[1]
+        y = y + coords[2]
+        z = z + coords[3]
+        setRoomCoordinates(map.currentRoom,x,y,z)
+        centerview(map.currentRoom)
+        map.echo("Shifting room",true)
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.fix_portals()
+    if map.mapping then
+        -- used to clear and update data for portal back-referencing
+        local rooms = getRooms()
+        local portals
+        for k,v in pairs(rooms) do
+            setRoomUserData(k,"portals","")
+        end
+        for k,v in pairs(rooms) do
+            for cmd,room in pairs(getSpecialExitsSwap(k)) do
+                portals = getRoomUserData(room,"portals") or ""
+                if portals ~= "" then portals = portals .. "," end
+                portals = portals .. tostring(k) .. ":" .. cmd
+                setRoomUserData(room,"portals",portals)
+            end
+        end
+        map.echo("Portals Fixed")
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.merge_rooms()
+    -- used to combine essentially identical rooms with the same coordinates
+    -- typically, these are generated due to mapping errors
+    if map.mapping then
+        map.echo("Merging rooms")
+        local x,y,z = getRoomCoordinates(map.currentRoom)
+        local rooms = getRoomsByPosition(map.currentArea,x,y,z)
+        local exits, portals, room, cmd, curportals
+        local room_count = 1
+        for k,v in pairs(rooms) do
+            if v ~= map.currentRoom then
+                if getRoomName(v) == getRoomName(map.currentRoom) then
+                    room_count = room_count + 1
+                    for k1,v1 in pairs(getRoomExits(v)) do
+                        setExit(map.currentRoom,v1,stubmap[k1])
+                        exits = getRoomExits(v1)
+                        if exits[reverse_dirs[k1]] == v then
+                            setExit(v1,map.currentRoom,stubmap[reverse_dirs[k1]])
+                        end
+                    end
+                    for k1,v1 in pairs(getDoors(v)) do
+                        setDoor(map.currentRoom,k1,v1)
+                    end
+                    for k1,v1 in pairs(getSpecialExitsSwap(v)) do
+                        addSpecialExit(map.currentRoom,v1,k1)
+                    end
+                    portals = getRoomUserData(v,"portals") or ""
+                    if portals ~= "" then
+                        portals = string.split(portals,",")
+                        for k1,v1 in ipairs(portals) do
+                            room,cmd = unpack(string.split(v1,":"))
+                            addSpecialExit(tonumber(room),map.currentRoom,cmd)
+                            curportals = getRoomUserData(map.currentRoom,"portals") or ""
+                            if not string.find(curportals,room) then
+                                curportals = curportals .. "," .. room .. ":" .. cmd
+                                setRoomUserData(map.currentRoom,"portals",curportals)
+                            end
+                        end
+                    end
+                    -- check handling of custom exits here for doors and exits, and reverse exits
+                    for i = 13,#stubmap do
+                        local door = "door " .. stubmap[i]
+                        local tmp = tonumber(getRoomUserData(v,door))
+                        if tmp then
+                            setRoomUserData(map.currentRoom,door,tmp)
+                        end
+                        local exit = "exit " .. stubmap[i]
+                        tmp = tonumber(getRoomUserData(v,exit))
+                        if tmp then
+                            setRoomUserData(map.currentRoom,exit,tmp)
+                            if tonumber(getRoomUserData(tmp, "exit " .. reverse_dirs[stubmap[i]])) == v then
+                                setRoomUserData(tmp, exit, map.currentRoom)
+                            end
+                        end
+                    end
+                    deleteRoom(v)
+                end
+            end
+        end
+        if room_count > 1 then
+            map.echo(room_count .. " rooms merged", true)
+        end
+    else
+        map.echo("Not mapping",false,true)
+    end
+end
+
+function map.showMap(shown)
+    local configs = map.configs.map_window
+    shown = shown or not configs.shown
+    map.configs.map_window.shown = shown
+    local x, y, w, h, origin = configs.x, configs.y, configs.w, configs.h, configs.origin
+    if string.find(origin,"bottom") then
+        if y == 0 or y == "0%" then
+            y = h
+        end
+        if type(y) == "number" then
+            y = -y
+        else
+            y = "-"..y
+        end
+    end
+    if string.find(origin,"right") then
+        if x == 0 or x == "0%" then
+            x = w
+        end
+        if type(x) == "number" then
+            x = -x
+        else
+            x = "-"..x
+        end
+    end
+    local mapper = Geyser.Mapper:new({name = "my_mapper", x = x, y = y, w = w, h = h})
+    mapper:resize(w,h)
+    mapper:move(x,y)
+    if shown then
+        mapper:show()
+    else
+        mapper:hide()
+    end
+end
+
+------------------
+-- Room Management
+------------------
 local function set_room(roomID)
     -- moves the map to the new room
     if map.currentRoom ~= roomID then
@@ -634,6 +1270,71 @@ local function find_link(name, exits, dir, max_distance)
     end
 end
 
+local function find_area(name)
+    -- searches for the named area, and creates it if necessary
+    local areas = getAreaTable()
+    local areaID
+    for k,v in pairs(areas) do
+        if string.lower(name) == string.lower(k) then
+            areaID = v
+            break
+        end
+    end
+    if not areaID then areaID = addAreaName(name) end
+    if not areaID then
+        show_err("Invalid Area. No such area found, and area could not be added.",true)
+    end
+    map.set("currentArea", areaID)
+end
+
+function map.findAreaID(areaname, exact)
+    local areaname = areaname:lower()
+    local list = getAreaTable()
+
+    -- iterate over the list of areas, matching them with substring match.
+    -- if we get match a single area, then return its ID, otherwise return
+    -- 'false' and a message that there are than one are matches
+    local returnid, fullareaname, multipleareas = nil, nil, {}
+    for area, id in pairs(list) do
+        if (not exact and area:lower():find(areaname, 1, true)) or (exact and areaname == area:lower()) then
+            returnid = id
+            fullareaname = area
+            multipleareas[#multipleareas+1] = area
+        end
+    end
+
+    if #multipleareas == 1 then
+        return returnid, fullareaname
+    else
+        return nil, nil, multipleareas
+    end
+end
+
+local function check_link(firstID, secondID, dir)
+    -- check to see if two rooms are connected in a given direction
+    if not firstID then error("Check Link Error: No first ID",2) end
+    if not secondID then error("Check Link Error: No second ID",2) end
+    local name = getRoomName(firstID)
+    local exits1 = table.union(getRoomExits(firstID),getRoomStubs(firstID))
+    local exits2 = table.union(getRoomExits(secondID),getRoomStubs(secondID))
+    local exit
+    -- check handling of custom exits here
+    for i = 13,#stubmap do
+        exit = "exit " .. stubmap[i]
+        exits1[stubmap[i]] = tonumber(getRoomUserData(firstID,exit))
+        exits2[stubmap[i]] = tonumber(getRoomUserData(secondID,exit))
+    end
+    local checkID = exits2[reverse_dirs[dir]]
+    local exits = {}
+    for k,v in pairs(exits1) do
+        table.insert(exits,k)
+    end
+    return checkID and check_room(checkID,name,exits)
+end
+
+-------------------
+-- Movement Capture
+-------------------
 local function move_map()
     -- tries to move the map to the next room
     local move = table.remove(move_queue,1)
@@ -773,386 +1474,6 @@ local function capture_room_info(name, exits)
     end
 end
 
-local function find_area(name)
-    -- searches for the named area, and creates it if necessary
-    local areas = getAreaTable()
-    local areaID
-    for k,v in pairs(areas) do
-        if string.lower(name) == string.lower(k) then
-            areaID = v
-            break
-        end
-    end
-    if not areaID then areaID = addAreaName(name) end
-    if not areaID then
-        show_err("Invalid Area. No such area found, and area could not be added.",true)
-    end
-    map.set("currentArea", areaID)
-end
-
-function map.load_map(address)
-    local path = profilePath .. "/map downloads/map.dat"
-    if not address then
-        loadMap(path)
-        map.echo("Map reloaded from local copy.")
-    else
-        if not string.match(address,"/[%a_]+%.dat$") then
-            address = address .. "/map.dat"
-        end
-        downloading = true
-        downloadFile(path, address)
-        map.echo(string.format("Downloading map file from: %s.",address))
-    end
-end
-
-function map.set_exit(dir,roomID)
-    -- used to set unusual exits from the room you are standing in
-    if map.mapping then
-        roomID = tonumber(roomID)
-        if not roomID then
-            show_err("Set Exit: Invalid Room ID")
-        end
-        if not table.contains(exitmap,dir) and not string.starts(dir, "-p ") then
-            show_err("Set Exit: Invalid Direction")
-        end
-
-        if not string.starts(dir, "-p ") then
-            local exit
-            if stubmap[exitmap[dir] or dir] <= 12 then
-                exit = short[exitmap[dir] or dir]
-                setExit(map.currentRoom,roomID,exit)
-            else
-                -- check handling of custom exits here
-                exit = exitmap[dir] or dir
-                exit = "exit " .. exit
-                setRoomUserData(map.currentRoom,exit,roomID)
-            end
-            map.echo("Exit " .. dir .. " now goes to roomID " .. roomID)
-        else
-            dir = string.gsub(dir,"^-p ","")
-            addSpecialExit(map.currentRoom,roomID,dir)
-            map.echo("Special exit '" .. dir .. "' now goes to roomID " .. roomID)
-        end
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.find_path(roomName,areaName,return_tables)
-    areaName = (areaName ~= "" and areaName) or nil
-    local rooms = find_room(roomName,areaName)
-    local found,dirs = false,{}
-    local path = {}
-    for k,v in pairs(rooms) do
-        found = getPath(map.currentRoom,k)
-        if found and (#dirs == 0 or #dirs > #speedWalkDir) then
-            dirs = speedWalkDir
-            path = speedWalkPath
-        end
-    end
-    if return_tables then
-        if table.is_empty(path) then
-            path, dirs = nil, nil
-        end
-        return path, dirs
-    else
-        if #dirs > 0 then
-            map.echo("Path to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ": " .. table.concat(dirs,", "))
-        else
-            map.echo("No path found to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ".",false,true)
-        end
-    end
-end
-
-function map.export_area(name)
-    -- used to export a single area to a file
-    local areas = getAreaTable()
-    name = string.lower(name)
-    for k,v in pairs(areas) do
-        if name == string.lower(k) then name = k end
-    end
-    if not areas[name] then
-        show_err("No such area.")
-    end
-    local rooms = getAreaRooms(areas[name])
-    local tmp = {}
-    for k,v in pairs(rooms) do
-        tmp[v] = v
-    end
-    rooms = tmp
-    local tbl = {}
-    tbl.name = name
-    tbl.rooms = {}
-    tbl.exits = {}
-    tbl.special = {}
-    local rname, exits, stubs, doors, special, portals, door_up, door_down, coords
-    for k,v in pairs(rooms) do
-        rname = getRoomName(v)
-        exits = getRoomExits(v)
-        stubs = getExitStubs(v)
-        doors = getDoors(v)
-        special = getSpecialExitsSwap(v)
-        portals = getRoomUserData(v,"portals") or ""
-        coords = {getRoomCoordinates(v)}
-        tbl.rooms[v] = {name = rname, coords = coords, exits = exits, stubs = stubs, doors = doors, door_up = door_up,
-            door_down = door_down, door_in = door_in, door_out = door_out, special = special, portals = portals}
-        tmp = {}
-        for k1,v1 in pairs(exits) do
-            if not table.contains(rooms,v1) then
-                tmp[k1] = {v1, getRoomName(v1)}
-            end
-        end
-        if not table.is_empty(tmp) then
-            tbl.exits[v] = tmp
-        end
-        tmp = {}
-        for k1,v1 in pairs(special) do
-            if not table.contains(rooms,v1) then
-                tmp[k1] = {v1, getRoomName(v1)}
-            end
-        end
-        if not table.is_empty(tmp) then
-            tbl.special[v] = tmp
-        end
-    end
-    local path = profilePath.."/"..string.gsub(string.lower(name),"%s","_")..".dat"
-    table.save(path,tbl)
-    map.echo("Area " .. name .. " exported to " .. path)
-end
-
-function map.import_area(name)
-    name = profilePath .. "/" .. string.gsub(string.lower(name),"%s","_") .. ".dat"
-    local tbl = {}
-    table.load(name,tbl)
-    if table.is_empty(tbl) then
-        show_err("No file found")
-    end
-    local areas = getAreaTable()
-    local areaID = areas[tbl.name] or addAreaName(tbl.name)
-    local rooms = {}
-    local ID
-    for k,v in pairs(tbl.rooms) do
-        ID = createRoomID()
-        rooms[k] = ID
-        addRoom(ID)
-        setRoomName(ID,v.name)
-        setRoomArea(ID,areaID)
-        setRoomCoordinates(ID,unpack(v.coords))
-        if type(v.stubs) == "table" then
-            for i,j in pairs(v.stubs) do
-                setExitStub(ID,j,true)
-            end
-        end
-        for i,j in pairs(v.doors) do
-            setDoor(ID,i,j)
-        end
-        setRoomUserData(ID,"portals",v.portals)
-    end
-    for k,v in pairs(tbl.rooms) do
-        for i,j in pairs(v.exits) do
-            if rooms[j] then
-                connect_rooms(rooms[k],rooms[j],i)
-            end
-        end
-        for i,j in pairs(v.special) do
-            if rooms[j] then
-                addSpecialExit(rooms[k],rooms[j],i)
-            end
-        end
-    end
-    for k,v in pairs(tbl.exits) do
-        for i,j in pairs(v) do
-            if getRoomName(j[1]) == j[2] then
-                connect_rooms(rooms[k],j[1],i)
-            end
-        end
-    end
-    for k,v in pairs(tbl.special) do
-        for i,j in pairs(v) do
-            addSpecialExit(k,j[1],i)
-        end
-    end
-    map.fix_portals()
-    map.echo("Area " .. tbl.name .. " imported from " .. name)
-end
-
-function map.set_recall()
-    -- assigned the current room to be recall for the current character
-    map.save.recall[map.character] = map.currentRoom
-    table.save(profilePath .. "/map downloads/map_save.dat",map.save)
-    map.echo("Recall room set to: " .. getRoomName(map.currentRoom) .. ".")
-end
-
-function map.set_portal(name, is_auto)
-    -- creates a new portal in the room
-    if map.mapping then
-        if not string.starts(name,"-f ") then
-            find_portal = name
-        else
-            name = string.gsub(name,"^-f ","")
-            force_portal = name
-        end
-        move_queue = {name}
-        if not is_auto then
-            send(name)
-        end
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.set_mode(mode)
-    -- switches mapping modes
-    if not table.contains({"lazy","simple","normal","complex"},mode) then
-        show_err("Invalid Map Mode, must be 'lazy', 'simple', 'normal' or 'complex'.")
-    end
-    map.set("mode", mode)
-    map.echo("Current mode set to: " .. mode)
-end
-
-function map.start_mapping(area_name)
-    -- starts mapping, and sets the current area to the given one, or uses the current one
-    if not map.currentName then
-        show_err("Room detection not yet working, see <yellow>map basics<reset> for guidance.")
-    end
-    local rooms
-    move_queue = {}
-    area_name = area_name ~= "" and area_name or nil
-    if map.currentArea and not area_name then
-        local areas = getAreaTableSwap()
-        area_name = areas[map.currentArea]
-    end
-    if not area_name then
-        show_err("You haven't started mapping yet, how should the first area be called? Set it with: <yellow>start mapping <area name><reset>")
-    end
-    map.echo("Now mapping in area: " .. area_name)
-    map.set("mapping", true)
-    find_area(area_name)
-    rooms = find_room(map.currentName, map.currentArea)
-    if table.is_empty(rooms) then
-        if map.currentRoom and getRoomName(map.currentRoom) == map.currentName then
-            map.set_area(area_name)
-        else
-            create_room(map.currentName, map.currentExits, nil, {0,0,0})
-        end
-    elseif map.currentRoom and map.currentArea ~= getRoomArea(map.currentRoom) then
-        map.set_area(area_name)
-    end
-end
-
-function map.stop_mapping()
-    map.set("mapping", false)
-    map.echo("Mapping off.")
-end
-
-function map.clear_moves()
-    local commands_in_queue = #move_queue
-    move_queue = {}
-    map.echo("Move queue cleared, "..commands_in_queue.." commands removed.")
-end
-
-function map.show_moves()
-    map.echo("Moves: "..(move_queue and table.concat(move_queue, ', ') or '(queue empty)'))
-end
-
-function map.set_area(name)
-    -- assigns the current room to the area given, creates the area if necessary
-    if map.mapping then
-        find_area(name)
-        if map.currentRoom and getRoomArea(map.currentRoom) ~= map.currentArea then
-            setRoomArea(map.currentRoom,map.currentArea)
-            set_room(map.currentRoom)
-        end
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.set_door(dir,status,one_way)
-    -- adds a door on a given exit
-    if map.mapping then
-        if not map.currentRoom then
-            show_err("Make Door: No room found.")
-        end
-        dir = exitmap[dir] or dir
-        if not stubmap[dir] then
-            show_err("Make Door: Invalid direction.")
-        end
-        status = (status ~= "" and status) or "closed"
-        one_way = (one_way ~= "" and one_way) or "no"
-        if not table.contains({"yes","no"},one_way) then
-            show_err("Make Door: Invalid one-way status, must be yes or no.")
-        end
-
-        local exits = getRoomExits(map.currentRoom)
-        local exit
-        -- check handling of custom exits here
-        for i = 13,#stubmap do
-            exit = "exit " .. stubmap[i]
-            exits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoom,exit))
-        end
-        local target_room = exits[dir]
-        if target_room then
-            exits = getRoomExits(target_room)
-            -- check handling of custom exits here
-            for i = 13,#stubmap do
-                exit = "exit " .. stubmap[i]
-                exits[stubmap[i]] = tonumber(getRoomUserData(target_room,exit))
-            end
-        end
-        if one_way == "no" and (target_room and exits[reverse_dirs[dir]] == map.currentRoom) then
-            add_door(target_room,reverse_dirs[dir],status)
-        end
-        add_door(map.currentRoom,dir,status)
-        map.echo(string.format("Adding %s door to the %s", status, dir))
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.shift_room(dir)
-    -- shifts a room around on the map
-    if map.mapping then
-        dir = exitmap[dir] or (table.contains(exitmap,dir) and dir)
-        if not dir then
-            show_err("Shift Room: Exit not found")
-        end
-        local x,y,z = getRoomCoordinates(map.currentRoom)
-        dir = stubmap[dir]
-        local coords = coordmap[dir]
-        x = x + coords[1]
-        y = y + coords[2]
-        z = z + coords[3]
-        setRoomCoordinates(map.currentRoom,x,y,z)
-        centerview(map.currentRoom)
-        map.echo("Shifting room",true)
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-local function check_link(firstID, secondID, dir)
-    -- check to see if two rooms are connected in a given direction
-    if not firstID then error("Check Link Error: No first ID",2) end
-    if not secondID then error("Check Link Error: No second ID",2) end
-    local name = getRoomName(firstID)
-    local exits1 = table.union(getRoomExits(firstID),getRoomStubs(firstID))
-    local exits2 = table.union(getRoomExits(secondID),getRoomStubs(secondID))
-    local exit
-    -- check handling of custom exits here
-    for i = 13,#stubmap do
-        exit = "exit " .. stubmap[i]
-        exits1[stubmap[i]] = tonumber(getRoomUserData(firstID,exit))
-        exits2[stubmap[i]] = tonumber(getRoomUserData(secondID,exit))
-    end
-    local checkID = exits2[reverse_dirs[dir]]
-    local exits = {}
-    for k,v in pairs(exits1) do
-        table.insert(exits,k)
-    end
-    return checkID and check_room(checkID,name,exits)
-end
-
 function map.find_me(name, exits, dir, manual)
     -- tries to locate the player using the current room name and exits, and if provided, direction of movement
     -- if direction of movement is given, narrows down possibilities using previous room info
@@ -1223,202 +1544,6 @@ function map.find_me(name, exits, dir, manual)
     elseif table.is_empty(match_IDs) then
         map.echo("Room not found in map database", not manual, true)
     end
-end
-
-function map.fix_portals()
-    if map.mapping then
-        -- used to clear and update data for portal back-referencing
-        local rooms = getRooms()
-        local portals
-        for k,v in pairs(rooms) do
-            setRoomUserData(k,"portals","")
-        end
-        for k,v in pairs(rooms) do
-            for cmd,room in pairs(getSpecialExitsSwap(k)) do
-                portals = getRoomUserData(room,"portals") or ""
-                if portals ~= "" then portals = portals .. "," end
-                portals = portals .. tostring(k) .. ":" .. cmd
-                setRoomUserData(room,"portals",portals)
-            end
-        end
-        map.echo("Portals Fixed")
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.merge_rooms()
-    -- used to combine essentially identical rooms with the same coordinates
-    -- typically, these are generated due to mapping errors
-    if map.mapping then
-        map.echo("Merging rooms")
-        local x,y,z = getRoomCoordinates(map.currentRoom)
-        local rooms = getRoomsByPosition(map.currentArea,x,y,z)
-        local exits, portals, room, cmd, curportals
-        local room_count = 1
-        for k,v in pairs(rooms) do
-            if v ~= map.currentRoom then
-                if getRoomName(v) == getRoomName(map.currentRoom) then
-                    room_count = room_count + 1
-                    for k1,v1 in pairs(getRoomExits(v)) do
-                        setExit(map.currentRoom,v1,stubmap[k1])
-                        exits = getRoomExits(v1)
-                        if exits[reverse_dirs[k1]] == v then
-                            setExit(v1,map.currentRoom,stubmap[reverse_dirs[k1]])
-                        end
-                    end
-                    for k1,v1 in pairs(getDoors(v)) do
-                        setDoor(map.currentRoom,k1,v1)
-                    end
-                    for k1,v1 in pairs(getSpecialExitsSwap(v)) do
-                        addSpecialExit(map.currentRoom,v1,k1)
-                    end
-                    portals = getRoomUserData(v,"portals") or ""
-                    if portals ~= "" then
-                        portals = string.split(portals,",")
-                        for k1,v1 in ipairs(portals) do
-                            room,cmd = unpack(string.split(v1,":"))
-                            addSpecialExit(tonumber(room),map.currentRoom,cmd)
-                            curportals = getRoomUserData(map.currentRoom,"portals") or ""
-                            if not string.find(curportals,room) then
-                                curportals = curportals .. "," .. room .. ":" .. cmd
-                                setRoomUserData(map.currentRoom,"portals",curportals)
-                            end
-                        end
-                    end
-                    -- check handling of custom exits here for doors and exits, and reverse exits
-                    for i = 13,#stubmap do
-                        local door = "door " .. stubmap[i]
-                        local tmp = tonumber(getRoomUserData(v,door))
-                        if tmp then
-                            setRoomUserData(map.currentRoom,door,tmp)
-                        end
-                        local exit = "exit " .. stubmap[i]
-                        tmp = tonumber(getRoomUserData(v,exit))
-                        if tmp then
-                            setRoomUserData(map.currentRoom,exit,tmp)
-                            if tonumber(getRoomUserData(tmp, "exit " .. reverse_dirs[stubmap[i]])) == v then
-                                setRoomUserData(tmp, exit, map.currentRoom)
-                            end
-                        end
-                    end
-                    deleteRoom(v)
-                end
-            end
-        end
-        if room_count > 1 then
-            map.echo(room_count .. " rooms merged", true)
-        end
-    else
-        map.echo("Not mapping",false,true)
-    end
-end
-
-function map.findAreaID(areaname, exact)
-    local areaname = areaname:lower()
-    local list = getAreaTable()
-
-    -- iterate over the list of areas, matching them with substring match.
-    -- if we get match a single area, then return its ID, otherwise return
-    -- 'false' and a message that there are than one are matches
-    local returnid, fullareaname, multipleareas = nil, nil, {}
-    for area, id in pairs(list) do
-        if (not exact and area:lower():find(areaname, 1, true)) or (exact and areaname == area:lower()) then
-            returnid = id
-            fullareaname = area
-            multipleareas[#multipleareas+1] = area
-        end
-    end
-
-    if #multipleareas == 1 then
-        return returnid, fullareaname
-    else
-        return nil, nil, multipleareas
-    end
-end
-
-function map.echoRoomList(areaname, exact)
-    local areaid, msg, multiples
-    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
-    if tonumber(areaname) then
-        areaid = tonumber(areaname)
-        msg = getAreaTableSwap()[areaid]
-    else
-        areaid, msg, multiples = map.findAreaID(areaname, exact)
-    end
-    if areaid then
-        local roomlist, endresult = getAreaRooms(areaid) or {}, {}
-
-        -- obtain a room list for each of the room IDs we got
-        local getRoomName = getRoomName
-        for _, id in pairs(roomlist) do
-            endresult[id] = getRoomName(id)
-        end
-        roomlist[#roomlist+1], roomlist[0] = roomlist[0], nil
-        -- sort room IDs so we can display them in order
-        table.sort(roomlist)
-
-        local echoLink, format, fg, echo = echoLink, string.format, fg, cecho
-        -- now display something half-decent looking
-        cecho(format("<%s>List of all rooms in <%s>%s<%s> (areaID <%s>%s<%s> - <%s>%d<%s> rooms):\n",
-            listcolor, othercolor, msg, listcolor, othercolor, areaid, listcolor, othercolor, #roomlist, listcolor))
-        -- use pairs, as we can have gaps between room IDs
-        for _, roomid in pairs(roomlist) do
-            local roomname = endresult[roomid]
-            cechoLink(format("<%s>%7s",othercolor,roomid), 'map.speedwalk('..roomid..')',
-                format("Go to %s (%s)", roomid, tostring(roomname)), true)
-            cecho(format("<%s>: <%s>%s<%s>.\n", listcolor, othercolor, roomname, listcolor))
-        end
-    elseif not areaid and #multiples > 0 then
-        local allareas, format = getAreaTable(), string.format
-        local function countrooms(areaname)
-            local areaid = allareas[areaname]
-            local allrooms = getAreaRooms(areaid) or {}
-            local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
-            return areac
-        end
-        map.echo("For which area would you want to list rooms for?")
-        for _, areaname in ipairs(multiples) do
-            echo("  ")
-            setUnderline(true)
-            cechoLink(format("<%s>%-40s (%d rooms)", othercolor, areaname, countrooms(areaname)),
-                'map.echoRoomList("'..areaname..'", true)', "Click to view the room list for "..areaname, true)
-            setUnderline(false)
-            echo("\n")
-        end
-    else
-        map.echo(string.format("Don't know of any area named '%s'.", areaname),false,true)
-    end
-    resetFormat()
-end
-
-function map.echoAreaList()
-    local totalroomcount = 0
-    local rlist = getAreaTableSwap()
-    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
-
-    -- count the amount of rooms in an area, taking care to count the room in the 0th
-    -- index as well if there is one
-    -- saves the total room count on the side as well
-    local function countrooms(areaid)
-        local allrooms = getAreaRooms(areaid) or {}
-        local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
-        totalroomcount = totalroomcount + areac
-        return areac
-    end
-
-    local getAreaRooms, cecho, fg, echoLink, format = getAreaRooms, cecho, fg, echoLink, string.format
-    cecho(format("<%s>List of all areas we know of (click to view room list):\n",listcolor))
-    for id = 1,table.maxn(rlist) do
-        if rlist[id] then
-            cecho(format("<%s>%7d ", othercolor, id))
-            fg(listcolor)
-            echoLink(format("%-40s (%d rooms)",rlist[id],countrooms(id)), 'map.echoRoomList("'..id..'", true)',
-                "View the room list for "..rlist[id], true)
-            echo("\n")
-        end
-    end
-    cecho(string.format("<%s>Total amount of rooms in this map: %s\n", listcolor, totalroomcount))
 end
 
 function map.search_timer_check()
@@ -1517,6 +1642,20 @@ local function name_search()
     return room_name
 end
 
+-- some games embed an ASCII map on the same line, which messes up the room room name
+-- extract the longest continuous piece of text from the line to be the room name
+function map.sanitizeRoomName(roomtitle)
+    assert(type(roomtitle) == "string", "map.sanitizeRoomName: bad argument #1 expected room title, got "..type(roomtitle).."!")
+    if not roomtitle:match("  ") then return roomtitle end
+  
+    local parts = roomtitle:split("  ")
+    table.sort(parts, function(a,b) return #a < #b end)
+    local longestpart = parts[#parts]
+  
+    local trimmed = utf8.match(longestpart, "[%w ]+"):trim()
+    return trimmed
+  end
+
 local function handle_exits(exits)
     local room = map.prompt.room or name_search()
     room = map.sanitizeRoomName(room)
@@ -1529,6 +1668,36 @@ local function handle_exits(exits)
         capture_room_info(room, exits)
         map.prompt.room = nil
         map.prompt.exits = nil
+    end
+end
+
+---------------
+-- Speedwalking
+---------------
+
+function map.find_path(roomName,areaName,return_tables)
+    areaName = (areaName ~= "" and areaName) or nil
+    local rooms = find_room(roomName,areaName)
+    local found,dirs = false,{}
+    local path = {}
+    for k,v in pairs(rooms) do
+        found = getPath(map.currentRoom,k)
+        if found and (#dirs == 0 or #dirs > #speedWalkDir) then
+            dirs = speedWalkDir
+            path = speedWalkPath
+        end
+    end
+    if return_tables then
+        if table.is_empty(path) then
+            path, dirs = nil, nil
+        end
+        return path, dirs
+    else
+        if #dirs > 0 then
+            map.echo("Path to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ": " .. table.concat(dirs,", "))
+        else
+            map.echo("No path found to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ".",false,true)
+        end
     end
 end
 
@@ -1664,6 +1833,9 @@ function map.toggleSpeedwalk(what)
     end
 end
 
+-------------
+-- Versioning
+-------------
 local function check_version()
     downloading = false
     local path = profilePath .. "/map downloads/versions.lua"
@@ -1707,150 +1879,3 @@ function map.updateVersion()
     downloading = true
     downloadFile(path .. file, map.configs.download_path .. file)
 end
-
-function map.showMap(shown)
-    local configs = map.configs.map_window
-    shown = shown or not configs.shown
-    map.configs.map_window.shown = shown
-    local x, y, w, h, origin = configs.x, configs.y, configs.w, configs.h, configs.origin
-    if string.find(origin,"bottom") then
-        if y == 0 or y == "0%" then
-            y = h
-        end
-        if type(y) == "number" then
-            y = -y
-        else
-            y = "-"..y
-        end
-    end
-    if string.find(origin,"right") then
-        if x == 0 or x == "0%" then
-            x = w
-        end
-        if type(x) == "number" then
-            x = -x
-        else
-            x = "-"..x
-        end
-    end
-    local mapper = Geyser.Mapper:new({name = "my_mapper", x = x, y = y, w = w, h = h})
-    mapper:resize(w,h)
-    mapper:move(x,y)
-    if shown then
-        mapper:show()
-    else
-        mapper:hide()
-    end
-end
-
--- some games embed an ASCII map on the same line, which messes up the room room name
--- extract the longest continuous piece of text from the line to be the room name
-function map.sanitizeRoomName(roomtitle)
-  assert(type(roomtitle) == "string", "map.sanitizeRoomName: bad argument #1 expected room title, got "..type(roomtitle).."!")
-  if not roomtitle:match("  ") then return roomtitle end
-
-  local parts = roomtitle:split("  ")
-  table.sort(parts, function(a,b) return #a < #b end)
-  local longestpart = parts[#parts]
-
-  local trimmed = utf8.match(longestpart, "[%w ]+"):trim()
-  return trimmed
-end
-
-function map.eventHandler(event, ...)
-    if event == "onNewRoom" then
-        handle_exits(arg[1])
-        if walking and map.configs.speedwalk_wait then
-            continue_walk(true)
-        end
-    elseif event == "onPrompt" then
-        if map.prompt.exits and map.prompt.exits ~= "" then
-            raiseEvent("onNewRoom")
-        end
-        print_wait_echoes()
-        map.echo("Prompt Captured",true)
-    elseif event == "onMoveFail" then
-        map.echo("onMoveFail",true)
-        table.remove(move_queue,1)
-    elseif event == "onVisionFail" then
-        map.echo("onVisionFail",true)
-        vision_fail = true
-        capture_room_info()
-    elseif event == "onRandomMove" then
-        map.echo("onRandomMove",true)
-        random_move = true
-        move_queue = {}
-    elseif event == "onForcedMove" then
-        map.echo("onForcedMove",true)
-        capture_move_cmd(arg[1],arg[2]=="true")
-    elseif event == "onNewLine" then
-        grab_line()
-    elseif event == "sysDataSendRequest" then
-        capture_move_cmd(arg[1])
-        -- check to prevent multiple version checks in a row without user intervention
-        if map.update_waiting and map.update_timer then
-            map.update_waiting = nil
-        -- check to ensure version check cycle is started
-        elseif not map.update_waiting and not map.update_timer then
-            map.checkVersion()
-        end
-    elseif event == "sysDownloadDone" and downloading then
-        local file = arg[1]
-        if string.ends(file,"/map.dat") then
-            loadMap(file)
-            downloading = false
-            map.echo("Map File Loaded.")
-        elseif string.ends(file,"/versions.lua") then
-            check_version()
-        elseif string.ends(file,"/generic_mapper.xml") then
-            update_version()
-        end
-    elseif event == "sysDownloadError" and downloading then
-        local file = arg[1]
-        if string.ends(file,"/versions.lua") and mudlet.translations.interfacelanguage == "zh_CN" then
-            -- update to the current download path for chinese user
-            if map.configs.download_path == "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper" then
-                map.configs.download_path = "https://gitee.com/mudlet/Mudlet/raw/development/src/mudlet-lua/lua/generic-mapper"
-                map.checkVersion()
-            end
-        end
-    elseif event == "sysLoadEvent" or event == "sysInstall" then
-        config()
-    elseif event == "mapOpenEvent" then
-        if not help_shown and not map.save.prompt_pattern[map.character or ""] then
-            map.find_prompt()
-            send(map.configs.lang_dirs['look'], true)
-            tempTimer(3, function() map.show_help("quick_start"); help_shown = true end)
-        end
-    elseif event == "mapStop" then
-        map.set("mapping", false)
-        walking = false
-        map.echo("Mapping and speedwalking stopped.")
-    elseif event == "sysManualLocationSetEvent" then
-      set_room(arg[1])
-    elseif event == "sysUninstallPackage" and not map.updatingMapper and arg[1] == "generic_mapper" then
-        for _,id in ipairs(map.registeredEvents) do
-            killAnonymousEventHandler(id)
-        end
-    end
-end
-
-map.registeredEvents = {
-registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
-registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
-registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysConnectionEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
-registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
-registerAnonymousEventHandler("onMoveFail", "map.eventHandler"),
-registerAnonymousEventHandler("onVisionFail", "map.eventHandler"),
-registerAnonymousEventHandler("onRandomMove", "map.eventHandler"),
-registerAnonymousEventHandler("onForcedMove", "map.eventHandler"),
-registerAnonymousEventHandler("onNewRoom", "map.eventHandler"),
-registerAnonymousEventHandler("onNewLine", "map.eventHandler"),
-registerAnonymousEventHandler("mapOpenEvent", "map.eventHandler"),
-registerAnonymousEventHandler("mapStop", "map.eventHandler"),
-registerAnonymousEventHandler("onPrompt", "map.eventHandler"),
-registerAnonymousEventHandler("sysManualLocationSetEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysUninstallPackage", "map.eventHandler")
-}
