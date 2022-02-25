@@ -156,8 +156,6 @@ function map.eventHandler(event, ...)
             local dx,dy,dz = unpack(coordmap[stubmap[dir]])
             create_room(map.currentRoomName, map.currentRoomExits, dir,{x+dx,y+dy,z+dz})
         end
-
-        move_map(table.keys(prevRoomExits))
     elseif event == "onNewRoom" then
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
@@ -209,8 +207,8 @@ function map.eventHandler(event, ...)
         walking = false
         map.echo("Mapping and speedwalking stopped.")
     elseif event == "sysManualLocationSetEvent" then
-        -- TODO: Add the loading of old info before centering (prevRoom)
-        centering(arg[1])
+        -- TODO: Add the loading of old info before centerview (prevRoom)
+        centerview(arg[1])
     elseif event == "sysUninstallPackage" and not map.updatingMapper and arg[1] == "generic_mapper" then
         for _,id in ipairs(map.registeredEvents) do
             killAnonymousEventHandler(id)
@@ -768,7 +766,7 @@ function map.set_area(name)
         find_area(name)
         if map.currentRoom and getRoomArea(map.currentRoom) ~= map.currentArea then
             setRoomArea(map.currentRoom,map.currentArea)
-            centering(map.currentRoom)
+            centerview(map.currentRoom)
         end
     else
         map.echo("Not mapping",false,true)
@@ -1099,37 +1097,6 @@ local function connect_rooms(ID1, ID2, dir1, dir2, no_check)
     end
 end
 
-local function check_room(roomID, name, exits, onlyName)
-    -- check to see if room name or/and exits match expectations
-    if not roomID then
-        error("Check Room Error: No ID",2)
-    end
-    -- check with room hash id
-    if map.prompt.hash then
-        if map.prompt.hash == getRoomHashByID(roomID) then
-            return true
-        else
-            return false
-        end
-    end
-
-    if name ~= getRoomName(roomID) then return false end
-
-    -- used in mode "lazy" to match only the room name
-    if onlyName then return true end
-
-    local t_exits = table.union(getRoomExits(roomID),getRoomStubs(roomID))
-    -- check handling of custom exits here
-    for i = 13,#stubmap do
-        t_exits[stubmap[i]] = tonumber(getRoomUserData(roomID,"exit " .. stubmap[i])) or (tonumber(getRoomUserData(roomID,"stub " .. stubmap[i])) and 0) or (tonumber(getRoomUserData(roomID,"stub" .. stubmap[i])) and 0) -- for old version
-    end
-    for k,v in ipairs(exits) do
-        if short[v] and not table.contains(t_exits,v) then return false end
-        t_exits[v] = nil
-    end
-    return table.is_empty(t_exits) or check_doors(roomID,t_exits)
-end
-
 local function stretch_map(dir,x,y,z)
     -- stretches a map to make room for just added room that would overlap with existing room
     local dx,dy,dz
@@ -1214,29 +1181,6 @@ local function create_room(name, exits, dir, coords)
     end
 end
 
-local function find_area_limits(areaID)
-    -- used to find min and max coordinate limits for an area
-    if not areaID then
-        error("Find Limits: Missing area ID",2)
-    end
-    local rooms = getAreaRooms(areaID)
-    local minx, miny, minz = getRoomCoordinates(rooms[0])
-    local maxx, maxy, maxz = minx, miny, minz
-    local x,y,z
-    for k,v in pairs(rooms) do
-        x,y,z = getRoomCoordinates(v)
-        minx = math.min(x,minx)
-        maxx = math.max(x,maxx)
-        miny = math.min(y,miny)
-        maxy = math.max(y,maxy)
-        minz = math.min(z,minz)
-        maxz = math.max(z,maxz)
-    end
-    return minx, maxx, miny, maxy, minz, maxz
-end
-
-
-
 local function find_area(name)
     -- searches for the named area, and creates it if necessary
     local areas = getAreaTable()
@@ -1275,28 +1219,6 @@ function map.findAreaID(areaname, exact)
     else
         return nil, nil, multipleareas
     end
-end
-
-local function check_link(firstID, secondID, dir)
-    -- check to see if two rooms are connected in a given direction
-    if not firstID then error("Check Link Error: No first ID",2) end
-    if not secondID then error("Check Link Error: No second ID",2) end
-    local name = getRoomName(firstID)
-    local exits1 = table.union(getRoomExits(firstID),getRoomStubs(firstID))
-    local exits2 = table.union(getRoomExits(secondID),getRoomStubs(secondID))
-    local exit
-    -- check handling of custom exits here
-    for i = 13,#stubmap do
-        exit = "exit " .. stubmap[i]
-        exits1[stubmap[i]] = tonumber(getRoomUserData(firstID,exit))
-        exits2[stubmap[i]] = tonumber(getRoomUserData(secondID,exit))
-    end
-    local checkID = exits2[reverse_dirs[dir]]
-    local exits = {}
-    for k,v in pairs(exits1) do
-        table.insert(exits,k)
-    end
-    return checkID and check_room(checkID,name,exits)
 end
 
 -------------------
@@ -1360,41 +1282,6 @@ local function capture_move_cmd(dir,priority)
                 table.insert(move_queue,dir)
             end
         end
-    end
-end
-
-local function deduplicate_exits(exits)
-  local deduplicated_exits = {}
-  for _, v in ipairs(exits) do
-    deduplicated_exits[v] = true
-  end
-
-  return table.keys(deduplicated_exits)
-end
-
-function map.find_me(name, exits, dir, manual)
-    -- tries to locate the player using the current room name and exits, and if provided, direction of movement
-    -- if direction of movement is given, narrows down possibilities using previous room info
-    
-    -- find from room hash id - map.find_me(nil, nil, nil, false)
-    if map.prompt.hash then
-        local room = getRoomIDbyHash(map.prompt.hash)
-        if room > 0 then
-            centerview(room)
-            map.echo("Room found, ID: " .. room, true)
-            return
-        else
-            map.echo("Room not found in map database!", not manual, true)
-            return
-        end
-    end
-
-    if not find_portal then
-        map.echo("Use centering(map.currentRoomID)", false, true)
-    end
-
-    if find_portal then -- Assumes we just went through a portal
-        map.echo("Use map.find.portal", false, true)
     end
 end
 
@@ -1637,7 +1524,7 @@ end
 
 function map.resumeSpeedwalk(delay)
     if #speedWalkDir ~= 0 then
-        map.find_me(nil, nil, nil, true)
+        centerview(map.currentRoomID)
         raiseEvent("sysSpeedwalkResumed")
         map.echo("Speedwalking resumed.")
         tempTimer(delay or 0, function() map.speedwalk(nil, speedWalkPath, speedWalkDir) end)
