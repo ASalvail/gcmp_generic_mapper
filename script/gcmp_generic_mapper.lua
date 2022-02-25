@@ -85,8 +85,52 @@ local err_tag = "<255,0,0>(<178,34,34>error<255,0,0>): <255,255,255>"
 -----------------
 -- Mapping Events
 -----------------
+
+map.registeredEvents = {
+    registerAnonymousEventHandler("gmcp.room.info", "map.eventHandler"),
+    registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
+    registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
+    registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("sysConnectionEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
+    registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
+    registerAnonymousEventHandler("onMoveFail", "map.eventHandler"),
+    registerAnonymousEventHandler("onVisionFail", "map.eventHandler"),
+    registerAnonymousEventHandler("onRandomMove", "map.eventHandler"),
+    registerAnonymousEventHandler("onForcedMove", "map.eventHandler"),
+    registerAnonymousEventHandler("onNewRoom", "map.eventHandler"),
+    registerAnonymousEventHandler("onNewLine", "map.eventHandler"),
+    registerAnonymousEventHandler("mapOpenEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("mapStop", "map.eventHandler"),
+    registerAnonymousEventHandler("onPrompt", "map.eventHandler"),
+    registerAnonymousEventHandler("sysManualLocationSetEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("sysUninstallPackage", "map.eventHandler")
+    }
+
 function map.eventHandler(event, ...)
-    if event == "onNewRoom" then
+    if event == "gmcp.room.info" then
+        local roomID = tonumber(gmcp.room.info.num)
+        if roomID == map.prevRoomID then
+            return
+        end
+        map.set("prevRoomID", map.currentRoomID)
+        map.set("currentRoomID", roomID)
+
+        map.set("prevRoomName", map.currentRoomName)
+        map.set("currentRoomName", string.trim(gmcp.room.info.name))
+        
+        local parsed_exits = {}
+        for k, v in gmcp.room.info.exits do
+            parsed_exits[k] = tonumber(v)
+        end
+        map.set("prevRoomExits", map.currentRoomExits)
+        map.set("currentRoomExits", parsed_exits)
+
+        map.set("prevRoomArea", map.currentRoomArea)
+        map.set("currentRoomArea", string.trim(gmcp.room.info.area))
+        
+        move_map()
+    elseif event == "onNewRoom" then
         handle_exits(arg[1])
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
@@ -162,26 +206,6 @@ function map.eventHandler(event, ...)
         end
     end
 end
-
-map.registeredEvents = {
-registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
-registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
-registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysConnectionEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
-registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
-registerAnonymousEventHandler("onMoveFail", "map.eventHandler"),
-registerAnonymousEventHandler("onVisionFail", "map.eventHandler"),
-registerAnonymousEventHandler("onRandomMove", "map.eventHandler"),
-registerAnonymousEventHandler("onForcedMove", "map.eventHandler"),
-registerAnonymousEventHandler("onNewRoom", "map.eventHandler"),
-registerAnonymousEventHandler("onNewLine", "map.eventHandler"),
-registerAnonymousEventHandler("mapOpenEvent", "map.eventHandler"),
-registerAnonymousEventHandler("mapStop", "map.eventHandler"),
-registerAnonymousEventHandler("onPrompt", "map.eventHandler"),
-registerAnonymousEventHandler("sysManualLocationSetEvent", "map.eventHandler"),
-registerAnonymousEventHandler("sysUninstallPackage", "map.eventHandler")
-}
 
 --------------------------
 -- Configuration functions
@@ -1335,11 +1359,11 @@ end
 -------------------
 -- Movement Capture
 -------------------
-local function move_map()
+local function move_map(exits)
     -- tries to move the map to the next room
     local move = table.remove(move_queue,1)
     if move or random_move then
-        local exits = (map.currentRoom and getRoomExits(map.currentRoom)) or {}
+        -- local exits = (map.currentRoom and getRoomExits(map.currentRoom)) or {}
         -- check handling of custom exits here
         if map.currentRoom then
             for i = 13, #stubmap do
