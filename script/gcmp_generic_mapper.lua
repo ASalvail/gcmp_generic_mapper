@@ -109,7 +109,7 @@ map.registeredEvents = {
 function map.eventHandler(event, ...)
     if event == "gmcp.room.info" then
         local roomID = tonumber(gmcp.room.info.num)
-        if roomID == map.currentRoomID and #map.currentExits == #gmcp.room.info.exits then
+        if roomID == map.currentRoomID and #map.currentRoomExits == #gmcp.room.info.exits then
             map.echo("Room hasn't changed.", true)
             return
         end
@@ -273,8 +273,8 @@ local function config()
     end
 
     -- setup metatable to store sensitive values
-    local protected = {"mapping", "currentRoom", "currentName", "currentExits", "currentArea",
-        "prevRoom", "prevName", "prevExits", "mode", "version"}
+    local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomArea",
+        "prevRoomID", "prevRoomName", "prevRoomExits", "mode", "version"}
     mt = getmetatable(map) or {}
     mt.__index = mt
     mt.__newindex = function(tbl, key, value)
@@ -1242,7 +1242,7 @@ function map.find_path(roomName,areaName,return_tables)
     local found,dirs = false,{}
     local path = {}
     for k,v in pairs(rooms) do
-        found = getPath(map.currentRoom,k)
+        found = getPath(map.currentRoomID,k)
         if found and (#dirs == 0 or #dirs > #speedWalkDir) then
             dirs = speedWalkDir
             path = speedWalkPath
@@ -1293,14 +1293,14 @@ end
 
 function map.speedwalk(roomID, walkPath, walkDirs)
     roomID = roomID or speedWalkPath[#speedWalkPath]
-    getPath(map.currentRoom, roomID)
+    getPath(map.currentRoomID, roomID)
     walkPath = speedWalkPath
     walkDirs = speedWalkDir
     if #speedWalkPath == 0 then
         map.echo("No path to chosen room found.",false,true)
         return
     end
-    table.insert(walkPath, 1, map.currentRoom)
+    table.insert(walkPath, 1, map.currentRoomID)
     -- go through dirs to find doors that need opened, etc
     -- add in necessary extra commands to walkDirs table
     local k = 1
