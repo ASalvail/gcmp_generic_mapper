@@ -139,9 +139,6 @@ function map.eventHandler(event, ...)
                 map.currentRoomExits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoomID,"exit " .. stubmap[i]))
             end
 
-            connect_rooms(map.prevRoomID, map.currentRoomID, dir)
-            centerview(map.currentRoomID)
-
         else
             map.set("currentRoomName", string.trim(gmcp.room.info.name))
             map.set("currentRoomArea", string.trim(gmcp.room.info.area))
@@ -155,8 +152,12 @@ function map.eventHandler(event, ...)
 
             local x,y,z = getRoomCoordinates(map.prevRoomID)
             local dx,dy,dz = unpack(coordmap[stubmap[dir]])
-            create_room(map.currentRoomName, map.currentRoomExits, dir,{x+dx,y+dy,z+dz})
+            create_room(dir, {x+dx,y+dy,z+dz})
         end
+
+        connect_rooms(map.prevRoomID, map.currentRoomID, dir)
+        centerview(map.currentRoomID)
+
     elseif event == "onNewRoom" then
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
@@ -1125,60 +1126,41 @@ local function stretch_map(dir,x,y,z)
     end
 end
 
-local function create_room(name, exits, dir, coords)
+local function create_room(dir, coords)
     -- makes a new room with captured name and exits
     -- links with other rooms as appropriate
     -- links to adjacent rooms in direction of exits if in simple mode
     if map.mapping then
-        name = map.sanitizeRoomName(name)
         map.echo("New Room: " .. name,false,false,(dir or find_portal or force_portal) and true or false)
-        local newID = createRoomID()
-        addRoom(newID)
-        setRoomArea(newID, map.currentArea)
-        setRoomName(newID, name)
-        if map.prompt.hash then
-            setRoomIDbyHash(newID, map.prompt.hash)
-        end
-        for k,v in ipairs(exits) do
-            if stubmap[v] then
-                if stubmap[v] <= 12 then
-                    setExitStub(newID, stubmap[v], true)
+
+        addRoom(map.currentRoomID)
+        setRoomArea(map.currentRoomID, map.currentRoomArea)
+        setRoomName(map.currentRoomID, map.currentRoomName)
+        setRoomCoordinates(map.currentRoomID, unpack(coords))
+
+        for k,v in ipairs(map.currentRoomExits) do
+            if stubmap[k] then
+                if stubmap[k] <= 12 then
+                    setExitStub(map.currentRoomID, stubmap[k], true)
                 else
                     -- add special char to prompt special exit
-                    if string.find(v, "up") or string.find(v, "down") then
-                        setRoomChar(newID, "◎")
+                    if string.find(k, "up") or string.find(k, "down") then
+                        setRoomChar(map.currentRoomID, "◎")
                     end
                     -- check handling of custom exits here
-                    setRoomUserData(newID, "stub "..v,stubmap[v])
+                    setRoomUserData(map.currentRoomID, "stub "..k,stubmap[k])
                 end
             end
         end
-        if dir then
-            connect_rooms(map.currentRoom, newID, dir)
-        elseif find_portal or force_portal then
-            addSpecialExit(map.currentRoom, newID, (find_portal or force_portal))
-            setRoomUserData(newID,"portals",tostring(map.currentRoom)..":"..(find_portal or force_portal))
+        if find_portal or force_portal then
+            addSpecialExit(map.prevRoomID, map.currentRoomID, (find_portal or force_portal))
+            setRoomUserData(map.currentRoomID,"portals",tostring(map.prevRoomID)..":"..(find_portal or force_portal))
         end
-        setRoomCoordinates(newID,unpack(coords))
-        local pos_rooms = getRoomsByPosition(map.currentArea,unpack(coords))
+        
+        local pos_rooms = getRoomsByPosition(map.currentRoomArea, unpack(coords))
         if not (find_portal or force_portal) and map.configs.stretch_map and table.size(pos_rooms) > 1 then
-            centerview(newID)
             stretch_map(dir,unpack(coords))
         end
-        if map.mode == "simple" then
-            local x,y,z = unpack(coords)
-            local dx,dy,dz,rooms
-            for k,v in ipairs(exits) do
-                if stubmap[v] then
-                    dx,dy,dz = unpack(coordmap[stubmap[v]])
-                    rooms = getRoomsByPosition(map.currentArea,x+dx,y+dy,z+dz)
-                    if table.size(rooms) == 1 then
-                        connect_rooms(newID,rooms[0],v)
-                    end
-                end
-            end
-        end
-        centerview(newID)
     end
 end
 
@@ -1233,7 +1215,7 @@ local function move_map()
     elseif force_portal then
         find_portal = false
         map.echo("Creating portal destination")
-        create_room(map.currentName, map.currentExits, nil, {getRoomCoordinates(map.currentRoom)})
+        create_room(nil, {getRoomCoordinates(map.currentRoom)})
         force_portal = false
     elseif move == "recall" and map.save.recall[map.character] then
         centerview(map.save.recall[map.character])
