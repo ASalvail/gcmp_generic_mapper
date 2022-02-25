@@ -110,27 +110,54 @@ map.registeredEvents = {
 function map.eventHandler(event, ...)
     if event == "gmcp.room.info" then
         local roomID = tonumber(gmcp.room.info.num)
-        if roomID == map.prevRoomID then
+        if roomID == map.currentRoomID and #map.currentExits == #gmcp.room.info.exits then
+            map.echo("Room hasn't changed.", true)
             return
         end
         map.set("prevRoomID", map.currentRoomID)
         map.set("currentRoomID", roomID)
 
         map.set("prevRoomName", map.currentRoomName)
-        map.set("currentRoomName", string.trim(gmcp.room.info.name))
-        
-        local parsed_exits = {}
-        for k, v in gmcp.room.info.exits do
-            parsed_exits[k] = tonumber(v)
-        end
-        map.set("prevRoomExits", map.currentRoomExits)
-        map.set("currentRoomExits", parsed_exits)
-
         map.set("prevRoomArea", map.currentRoomArea)
-        map.set("currentRoomArea", string.trim(gmcp.room.info.area))
-        
-        move_map()
-    
+        map.set("prevRoomExits", map.currentRoomExits)
+
+        -- find the connection direction
+        local dir
+        for k, v in map.prevRoomExits do
+            if v == map.currentRoomID then
+                dir = k 
+                break 
+            end 
+        end
+
+        if roomExists(map.currentRoomID) then
+            map.set("currentRoomName", getRoomName(map.currentRoomID)))
+            map.set("currentRoomArea", getRoomArea(map.currentRoomID))
+            map.set("currentRoomExits", getRoomExits(map.currentRoomID))
+            -- check handling of custom exits here
+            for i = 13,#stubmap do
+                map.currentRoomExits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoomID,"exit " .. stubmap[i]))
+            end
+
+            connect_rooms(map.prevRoomID, map.currentRoomID, dir)
+            centerview(map.currentRoomID)
+
+        else
+            map.set("currentRoomName", string.trim(gmcp.room.info.name))
+            map.set("currentRoomArea", string.trim(gmcp.room.info.area))
+
+            local parsed_exits = {}
+            for k, v in gmcp.room.info.exits do
+                parsed_exits[k] = tonumber(v)
+            end
+            map.set("currentRoomExits", parsed_exits)
+
+            local x,y,z = getRoomCoordinates(map.prevRoomID)
+            local dx,dy,dz = unpack(coordmap[stubmap[dir]])
+            create_room(map.currentRoomName, map.currentRoomExits, dir,{x+dx,y+dy,z+dz})
+        end
+
+        move_map(table.keys(prevRoomExits))
     elseif event == "onNewRoom" then
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
@@ -182,7 +209,8 @@ function map.eventHandler(event, ...)
         walking = false
         map.echo("Mapping and speedwalking stopped.")
     elseif event == "sysManualLocationSetEvent" then
-      set_room(arg[1])
+        -- TODO: Add the loading of old info before centering (prevRoom)
+        centering(arg[1])
     elseif event == "sysUninstallPackage" and not map.updatingMapper and arg[1] == "generic_mapper" then
         for _,id in ipairs(map.registeredEvents) do
             killAnonymousEventHandler(id)
@@ -740,7 +768,7 @@ function map.set_area(name)
         find_area(name)
         if map.currentRoom and getRoomArea(map.currentRoom) ~= map.currentArea then
             setRoomArea(map.currentRoom,map.currentArea)
-            set_room(map.currentRoom)
+            centering(map.currentRoom)
         end
     else
         map.echo("Not mapping",false,true)
@@ -937,27 +965,6 @@ end
 ------------------
 -- Room Management
 ------------------
-local function set_room(roomID)
-    -- moves the map to the new room
-    if map.currentRoom ~= roomID then
-        map.set("prevRoom", map.currentRoom)
-        map.set("currentRoom", roomID)
-    end
-    if getRoomName(map.currentRoom) ~= map.currentName then
-        map.set("prevName", map.currentName)
-        map.set("prevExits", map.currentExits)
-        map.set("currentName", getRoomName(map.currentRoom))
-        map.set("currentExits", getRoomExits(map.currentRoom))
-        -- check handling of custom exits here
-        for i = 13,#stubmap do
-            map.currentExits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoom,"exit " .. stubmap[i]))
-        end
-    end
-    map.set("currentArea", getRoomArea(map.currentRoom))
-    centerview(map.currentRoom)
-    raiseEvent("onMoveMap", map.currentRoom)
-end
-
 local function add_door(roomID, dir, status)
     -- create or remove a door in the designated direction
     -- consider options for adding pickable and passable information
@@ -1005,7 +1012,7 @@ end
 
 local function find_room(name, area)
     -- looks for rooms with a particular name, and if given, in a specific area
-    local rooms = searchRoom(name)
+    local rooms = searchRoom(name)  -- {room_id: room_name}
     if type(area) == "string" then
         local areas = getAreaTable() or {}
         for k,v in pairs(areas) do
@@ -1016,6 +1023,7 @@ local function find_room(name, area)
         end
         area = areas[area] or nil
     end
+    -- filter on name and area
     for k,v in pairs(rooms) do
         if string.lower(v) ~= string.lower(name) then
             rooms[k] = nil
@@ -1186,7 +1194,7 @@ local function create_room(name, exits, dir, coords)
         setRoomCoordinates(newID,unpack(coords))
         local pos_rooms = getRoomsByPosition(map.currentArea,unpack(coords))
         if not (find_portal or force_portal) and map.configs.stretch_map and table.size(pos_rooms) > 1 then
-            set_room(newID)
+            centerview(newID)
             stretch_map(dir,unpack(coords))
         end
         if map.mode == "simple" then
@@ -1202,7 +1210,7 @@ local function create_room(name, exits, dir, coords)
                 end
             end
         end
-        set_room(newID)
+        centerview(newID)
     end
 end
 
@@ -1227,55 +1235,7 @@ local function find_area_limits(areaID)
     return minx, maxx, miny, maxy, minz, maxz
 end
 
-local function find_link(name, exits, dir, max_distance)
-    -- search for matching room in desired direction
-    -- in lazy mode check_room search only by name
-    local x,y,z = getRoomCoordinates(map.currentRoom)
-    if map.mapping and x then
-        if max_distance < 1 then
-            max_distance = nil
-        else
-            max_distance = max_distance - 1
-        end
-        if not stubmap[dir] or not coordmap[stubmap[dir]] then return end
-        local dx,dy,dz = unpack(coordmap[stubmap[dir]])
-        local minx, maxx, miny, maxy, minz, maxz = find_area_limits(map.currentArea)
-        local rooms, match, stubs
-        if max_distance then
-            minx, maxx = x - max_distance, x + max_distance
-            miny, maxy = y - max_distance, y + max_distance
-            minz, maxz = z - max_distance, z + max_distance
-        end
-        -- find link from room hash first
-        if map.prompt.hash then
-            local room = getRoomIDbyHash(map.prompt.hash)
-            if room > 0 then
-                match = room
-            end
-        else
-            repeat
-                x, y, z = x + dx, y + dy, z + dz
-                rooms = getRoomsByPosition(map.currentArea,x,y,z)
-            until (x > maxx or x < minx or y > maxy or y < miny or z > maxz or z < minz or not table.is_empty(rooms))
-            for k,v in pairs(rooms) do
-                if check_room(v,name,exits,false) then
-                    match = v
-                    break
-                elseif map.mode == "lazy" and check_room(v,name,exits,true) then
-                    match = v
-                    break
-                end
-            end
-        end
-        if match then
-            connect_rooms(map.currentRoom, match, dir)
-            set_room(match)
-        else
-            x,y,z = getRoomCoordinates(map.currentRoom)
-            create_room(name, exits, dir,{x+dx,y+dy,z+dz})
-        end
-    end
-end
+
 
 local function find_area(name)
     -- searches for the named area, and creates it if necessary
@@ -1342,59 +1302,18 @@ end
 -------------------
 -- Movement Capture
 -------------------
-local function move_map(exits)
+local function move_map()
     -- tries to move the map to the next room
-    local move = table.remove(move_queue,1)
-    if move or random_move then
-        -- local exits = (map.currentRoom and getRoomExits(map.currentRoom)) or {}
-        -- check handling of custom exits here
-        if map.currentRoom then
-            for i = 13, #stubmap do
-                exits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoom,"exit " .. stubmap[i]))
-            end
-        end
-        local special = (map.currentRoom and getSpecialExitsSwap(map.currentRoom)) or {}
-        if move and not exits[move] and not special[move] then
-            for k,v in pairs(special) do
-                if string.starts(k,move) then
-                    move = k
-                    break
-                end
-            end
-        end
-        if find_portal then
-            map.find_me(map.currentName,map.currentExits,move)
-            find_portal = false
-        elseif force_portal then
-            find_portal = false
-            map.echo("Creating portal destination")
-            create_room(map.currentName, map.currentExits, nil, {getRoomCoordinates(map.currentRoom)})
-            force_portal = false
-        elseif move == "recall" and map.save.recall[map.character] then
-            set_room(map.save.recall[map.character])
-        elseif move == map.configs.lang_dirs['look'] and map.currentRoom and not check_room(map.currentRoom, map.currentName, map.currentExits) then
-            -- this check isn't working as intended, find out why
-            map.find_me(map.currentName,map.currentExits)
-        else
-            local onlyName
-            if map.mode == "lazy" then
-              onlyName = true
-            else
-              onlyName = false
-            end
-            if exits[move] and (vision_fail or check_room(exits[move], map.currentName, map.currentExits, onlyName)) then
-                set_room(exits[move])
-            elseif special[move] and (vision_fail or check_room(special[move], map.currentName, map.currentExits, onlyName)) then
-                set_room(special[move])
-            elseif not vision_fail then
-                if map.mapping and move then
-                    find_link(map.currentName, map.currentExits, move, map.configs.max_search_distance)
-                else
-                    map.find_me(map.currentName,map.currentExits, move)
-                end
-            end
-        end
-        vision_fail = false
+
+    if find_portal then
+        map.find_portal()
+    elseif force_portal then
+        find_portal = false
+        map.echo("Creating portal destination")
+        create_room(map.currentName, map.currentExits, nil, {getRoomCoordinates(map.currentRoom)})
+        force_portal = false
+    elseif move == "recall" and map.save.recall[map.character] then
+        centerview(map.save.recall[map.character])
     end
 end
 
@@ -1456,12 +1375,12 @@ end
 function map.find_me(name, exits, dir, manual)
     -- tries to locate the player using the current room name and exits, and if provided, direction of movement
     -- if direction of movement is given, narrows down possibilities using previous room info
-    if move ~= "recall" then move_queue = {} end
+    
     -- find from room hash id - map.find_me(nil, nil, nil, false)
     if map.prompt.hash then
         local room = getRoomIDbyHash(map.prompt.hash)
         if room > 0 then
-            set_room(room)
+            centerview(room)
             map.echo("Room found, ID: " .. room, true)
             return
         else
@@ -1469,60 +1388,25 @@ function map.find_me(name, exits, dir, manual)
             return
         end
     end
-    local check = dir and map.currentRoom and table.contains(exitmap,dir)
-    name = name or map.currentName
-    exits = exits or map.currentExits
-    if not name and not exits then
-        show_err("Room not found, complete room name and exit data not available.")
+
+    if not find_portal then
+        map.echo("Use centering(map.currentRoomID)", false, true)
     end
-    local rooms = find_room(name)
-    local match_IDs = {}
-    for k,v in pairs(rooms) do
-        if check_room(k, name, exits) then
-            table.insert(match_IDs,k)
-        end
+
+    if find_portal then -- Assumes we just went through a portal
+        map.echo("Use map.find.portal", false, true)
     end
-    rooms = match_IDs
-    match_IDs = {}
-    if table.size(rooms) > 1 and check then
-        for k,v in pairs(rooms) do
-            if check_link(map.currentRoom,v,dir) then
-                table.insert(match_IDs,v)
-            end
-        end
-    elseif random_move then
-        for k,v in pairs(getRoomExits(map.currentRoom)) do
-            if check_room(v,map.currentName,map.currentExits) then
-                table.insert(match_IDs,v)
-            end
-        end
-    end
-    if table.size(match_IDs) == 0 then
-        match_IDs = rooms
-    end
-    if table.index_of(match_IDs,map.currentRoom) then
-        match_IDs = {map.currentRoom}
-    end
-    if not table.is_empty(match_IDs) and not find_portal then
-        set_room(match_IDs[1])
-        map.echo("Room found, ID: " .. match_IDs[1],true)
-    elseif find_portal then
-        if not table.is_empty(match_IDs) then
-            map.echo("Found portal destination, linking rooms",false,false,true)
-            addSpecialExit(map.currentRoom,match_IDs[1],find_portal)
-            local portals = getRoomUserData(match_IDs[1],"portals") or ""
-            portals = portals .. "," .. tostring(map.currentRoom)..":"..find_portal
-            setRoomUserData(match_IDs[1],"portals",portals)
-            set_room(match_IDs[1])
-            map.echo("Room found, ID: " .. match_IDs[1],true)
-        else
-            map.echo("Creating portal destination",false,false,true)
-            create_room(map.currentName, map.currentExits, nil, {getRoomCoordinates(map.currentRoom)})
-        end
-        find_portal = false
-    elseif table.is_empty(match_IDs) then
-        map.echo("Room not found in map database", not manual, true)
-    end
+end
+
+function map.find_portal()
+    map.echo("Found portal destination, linking rooms",false,false,true)
+    addSpecialExit(map.prevRoomID, map.currentRoomID, find_portal)
+    local portals = getRoomUserData(map.currentRoomID, "portals") or ""
+    portals = portals .. "," .. tostring(map.prevRoomID)..":"..find_portal
+    setRoomUserData(map.currentRoomID,"portals",portals)
+    centerview(map.currentRoomID)
+    map.echo("Room found, ID: " .. map.currentRoomID, true)
+    find_portal = false    
 end
 
 function map.search_timer_check()
