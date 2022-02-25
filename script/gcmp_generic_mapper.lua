@@ -183,47 +183,6 @@ local function config()
     end
 end
 
-function map.show_help(cmd)
-    if cmd and cmd ~= "" then
-        if cmd:starts("map ") then cmd = cmd:sub(5) end
-        cmd = cmd:lower():gsub(" ","_")
-        if not map.help[cmd] then
-            map.echo("No help file on that command.")
-        end
-    else
-        cmd = 1
-    end
-
-    for w in map.help[cmd]:gmatch("[^\n]*\n") do
-        local url, target = rex.match(w, [[<(url)?link: ([^>]+)>]])
-        -- lrexlib returns a non-capture as 'false', so determine which variable the capture went into
-        if target == nil then target = url end
-        if target then
-            local before, linktext, _, link, _, after, ok = rex.match(w,
-                          [[(.*)<((url)?link): [^>]+>(.*)<\/(url)?link>(.*)]], 0, 'm')
-            -- could not get rex.match to capture the newline - fallback to string.match
-            local _, _, after = w:match("(.*)<u?r?l?link: [^>]+>(.*)</u?r?l?link>(.*)")
-
-            cecho(before)
-            fg("yellow")
-            setUnderline(true)
-            if linktext == "urllink" then
-                echoLink(link, [[openWebPage("]]..target..[[")]], "Open Mudlet Discord", true)
-            elseif target ~= "1" then
-                echoLink(link,[[map.show_help("]]..target..[[")]],"View: map help " .. target,true)
-            else
-                echoLink(link,[[map.show_help()]],"View: map help",true)
-            end
-            setUnderline(false)
-            resetFormat()
-            if after then cecho(after) end
-        else
-            cecho(w)
-        end
-    end
-    echo("\n")
-end
-
 local bool_configs = {'stretch_map', 'search_on_look', 'speedwalk_wait', 'speedwalk_random',
     'clear_lines_on_send', 'debug', 'custom_name_search', 'use_translation'}
 -- function intended to be used by an alias to change config values and save them to a file for later
