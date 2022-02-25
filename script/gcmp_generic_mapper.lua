@@ -130,28 +130,11 @@ function map.eventHandler(event, ...)
         map.set("currentRoomArea", string.trim(gmcp.room.info.area))
         
         move_map()
+    
     elseif event == "onNewRoom" then
-        handle_exits(arg[1])
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
         end
-    elseif event == "onPrompt" then
-        if map.prompt.exits and map.prompt.exits ~= "" then
-            raiseEvent("onNewRoom")
-        end
-        print_wait_echoes()
-        map.echo("Prompt Captured",true)
-    elseif event == "onMoveFail" then
-        map.echo("onMoveFail",true)
-        table.remove(move_queue,1)
-    elseif event == "onVisionFail" then
-        map.echo("onVisionFail",true)
-        vision_fail = true
-        capture_room_info()
-    elseif event == "onRandomMove" then
-        map.echo("onRandomMove",true)
-        random_move = true
-        move_queue = {}
     elseif event == "onForcedMove" then
         map.echo("onForcedMove",true)
         capture_move_cmd(arg[1],arg[2]=="true")
@@ -1469,34 +1452,6 @@ local function deduplicate_exits(exits)
 
   return table.keys(deduplicated_exits)
 end
-local function capture_room_info(name, exits)
-    -- captures room info, and tries to move map to match
-    if (not vision_fail) and name and exits then
-        map.set("prevName", map.currentName)
-        map.set("prevExits", map.currentExits)
-        name = string.trim(name)
-        map.set("currentName", name)
-        if exits:ends(".") then exits = exits:sub(1,#exits-1) end
-        if not map.configs.use_translation then
-            exits = string.gsub(string.lower(exits)," and "," ")
-        end
-        map.set("currentExits", {})
-        for w in string.gmatch(exits,"%a+") do
-            if map.configs.use_translation then
-                local dir = map.configs.translate and map.configs.translate[w]
-                if dir then table.insert(map.currentExits,dir) end
-            else
-                table.insert(map.currentExits,w)
-            end
-        end
-        undupeExits = deduplicate_exits(map.currentExits)
-        map.set("currentExits", undupeExits)
-        map.echo(string.format("Exits Captured: %s (%s)",exits, table.concat(map.currentExits, " ")),true)
-        move_map()
-    elseif vision_fail then
-        move_map()
-    end
-end
 
 function map.find_me(name, exits, dir, manual)
     -- tries to locate the player using the current room name and exits, and if provided, direction of movement
@@ -1664,35 +1619,6 @@ local function name_search()
         room_name = room_name:sub(1,100)
     end
     return room_name
-end
-
--- some games embed an ASCII map on the same line, which messes up the room room name
--- extract the longest continuous piece of text from the line to be the room name
-function map.sanitizeRoomName(roomtitle)
-    assert(type(roomtitle) == "string", "map.sanitizeRoomName: bad argument #1 expected room title, got "..type(roomtitle).."!")
-    if not roomtitle:match("  ") then return roomtitle end
-  
-    local parts = roomtitle:split("  ")
-    table.sort(parts, function(a,b) return #a < #b end)
-    local longestpart = parts[#parts]
-  
-    local trimmed = utf8.match(longestpart, "[%w ]+"):trim()
-    return trimmed
-  end
-
-local function handle_exits(exits)
-    local room = map.prompt.room or name_search()
-    room = map.sanitizeRoomName(room)
-    exits = map.prompt.exits or exits
-    exits = string.lower(exits)
-    exits = string.gsub(exits,"%a+", exitmap)
-    if room then
-        map.echo("Room Name Captured: " .. room, true)
-        room = string.trim(room)
-        capture_room_info(room, exits)
-        map.prompt.room = nil
-        map.prompt.exits = nil
-    end
 end
 
 ---------------
