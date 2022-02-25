@@ -30,8 +30,7 @@ string.ends = oldstring.ends
 local profilePath = getMudletHomeDir()
 profilePath = profilePath:gsub("\\","/")
 
-local move_queue, lines = {}, {}
-local find_portal, vision_fail, room_detected, random_move, force_portal, find_prompt, downloading, walking, help_shown
+local find_portal, room_detected, force_portal, find_prompt, downloading, walking, help_shown
 local mt = getmetatable(map) or {}
 
 local exitmap = {
@@ -192,12 +191,6 @@ function map.eventHandler(event, ...)
         end
     elseif event == "sysLoadEvent" or event == "sysInstall" then
         config()
-    elseif event == "mapOpenEvent" then
-        if not help_shown and not map.save.prompt_pattern[map.character or ""] then
-            map.find_prompt()
-            send(map.configs.lang_dirs['look'], true)
-            tempTimer(3, function() map.show_help("quick_start"); help_shown = true end)
-        end
     elseif event == "mapStop" then
         map.set("mapping", false)
         walking = false
@@ -223,7 +216,6 @@ map.defaults = {
     speedwalk_wait = true,
     speedwalk_random = true,
     max_search_distance = 1,
-    clear_lines_on_send = true,
     map_window = {
         x = 0,
         y = 0,
@@ -235,7 +227,6 @@ map.defaults = {
     prompt_test_patterns = {"^%[?%a*%]?<.*>", "^%[.*%]%s*>", "^%w*[%.?!:]*>", "^%[.*%]", "^[Hh][Pp]:.*>"},
     custom_exits = {},  -- format: short_exit = {long_exit, reverse_exit, x_dif, y_dif, z_dif}
                         -- ex: { us = {"upsouth", "downnorth", 0, -1, 1}, dn = {"downnorth", "upsouth", 0, 1, -1} }
-    custom_name_search = true,
     use_translation = true,
     lang_dirs = {n = 'n', ne = 'ne', nw = 'nw', e = 'e', w = 'w', s = 's', se = 'se', sw = 'sw',
         u = 'u', d = 'd', ["in"] = 'in', out = 'out', north = 'north', northeast = 'northeast',
@@ -317,7 +308,7 @@ local function config()
 end
 
 local bool_configs = {'stretch_map', 'search_on_look', 'speedwalk_wait', 'speedwalk_random',
-    'clear_lines_on_send', 'debug', 'custom_name_search', 'use_translation'}
+    'debug', 'use_translation'}
 -- function intended to be used by an alias to change config values and save them to a file for later
 function map.setConfigs(key, val, sub_key)
     if val == "off" or val == "false" then
@@ -693,7 +684,6 @@ function map.set_portal(name, is_auto)
             name = string.gsub(name,"^-f ","")
             force_portal = name
         end
-        move_queue = {name}
         if not is_auto then
             send(name)
         end
@@ -717,7 +707,6 @@ function map.start_mapping(area_name)
         show_err("Room detection not yet working, see <yellow>map basics<reset> for guidance.")
     end
     local rooms
-    move_queue = {}
     area_name = area_name ~= "" and area_name or nil
     if map.currentArea and not area_name then
         local areas = getAreaTableSwap()
@@ -744,16 +733,6 @@ end
 function map.stop_mapping()
     map.set("mapping", false)
     map.echo("Mapping off.")
-end
-
-function map.clear_moves()
-    local commands_in_queue = #move_queue
-    move_queue = {}
-    map.echo("Move queue cleared, "..commands_in_queue.." commands removed.")
-end
-
-function map.show_moves()
-    map.echo("Moves: "..(move_queue and table.concat(move_queue, ', ') or '(queue empty)'))
 end
 
 function map.set_area(name)
@@ -1251,102 +1230,6 @@ function map.find_portal()
     centerview(map.currentRoomID)
     map.echo("Room found, ID: " .. map.currentRoomID, true)
     find_portal = false    
-end
-
-function map.search_timer_check()
-    if find_prompt then
-        map.echo("Prompt not auto-detected, use 'map prompt' to set a prompt pattern.",false,true)
-        find_prompt = false
-    end
-end
-
-function map.find_prompt()
-    find_prompt = true
-    map.echo("Searching for prompt.")
-    send("\n", false)
-    tempTimer(5, "map.search_timer_check()")
-end
-
-function map.make_prompt_pattern(str)
-    if not str:starts("^") then str = "^"..str end
-    map.save.prompt_pattern[map.character] = str
-    find_prompt = false
-    table.save(profilePath .. "/map downloads/map_save.dat",map.save)
-    map.echo("Prompt pattern set: " .. str)
-end
-
-function map.make_ignore_pattern(str)
-    map.save.ignore_patterns = map.save.ignore_patterns or {}
-    if not table.contains(map.save.ignore_patterns,str) then
-        table.insert(map.save.ignore_patterns,str)
-        map.echo("Ignore pattern added: " .. str)
-    else
-        table.remove(map.save.ignore_patterns, table.index_of(map.save.ignore_patterns, str))
-        map.echo("Ignore pattern removed: " .. str)
-    end
-    table.save(profilePath .. "/map downloads/map_save.dat",map.save)
-end
-
-local function grab_line()
-    table.insert(lines,line)
-    if map.save.prompt_pattern[map.character] and string.match(line, map.save.prompt_pattern[map.character]) then
-        if map.prompt.exits and map.prompt.exits ~= "" then
-            raiseEvent("onNewRoom")
-        end
-        print_wait_echoes()
-        map.echo("Prompt captured",true)
-    end
-    if find_prompt then
-        for k,v in ipairs(map.configs.prompt_test_patterns) do
-            if string.match(line,v) then
-                map.save.prompt_pattern[map.character] = v
-                table.save(profilePath .. "/map downloads/map_save.dat",map.save)
-                find_prompt = false
-                map.echo("Prompt found")
-                break
-            end
-        end
-    end
-end
-
-local function name_search()
-    local room_name
-    if map.configs.custom_name_search then
-        room_name = mudlet.custom_name_search(lines)
-    else
-        local line_count = #lines + 1
-        local cur_line, last_line
-        local prompt_pattern = map.save.prompt_pattern[map.character]
-        if not prompt_pattern then return end
-        while not room_name do
-            line_count = line_count - 1
-            if not lines[line_count] then break end
-            cur_line = lines[line_count]
-            for k,v in ipairs(map.save.ignore_patterns) do
-                cur_line = string.trim(string.gsub(cur_line,v,""))
-            end
-            if string.find(cur_line,prompt_pattern) then
-                cur_line = string.trim(string.gsub(cur_line,prompt_pattern,""))
-                if cur_line ~= "" then
-                    room_name = cur_line
-                else
-                    room_name = last_line
-                end
-            elseif line_count == 1 then
-                cur_line = string.trim(cur_line)
-                if cur_line ~= "" then
-                    room_name = cur_line
-                else
-                    room_name = last_line
-                end
-            elseif not string.match(cur_line,"^%s*$") then
-                last_line = cur_line
-            end
-        end
-        lines = {}
-        room_name = room_name:sub(1,100)
-    end
-    return room_name
 end
 
 ---------------
