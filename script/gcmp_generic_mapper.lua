@@ -148,6 +148,7 @@ function map.eventHandler(event, ...)
 
             local parsed_exits = {}
             for k, v in gmcp.room.info.exits do
+                k = exitmap[k] or k  -- The script assumes that directions are longform
                 parsed_exits[k] = tonumber(v)
             end
             map.set("currentRoomExits", parsed_exits)
