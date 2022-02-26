@@ -1,4 +1,5 @@
--- Jor'Mox's Generic Map Script
+-- ASalvail's GCMP Mapping Script
+-- Based off of Jor'Mox's Generic Map Script
 -- the script self-updates, changing this value will bring an update to all installations
 -- make sure versions.lua has the latest version in it
 -- local version = "2.0.24"
