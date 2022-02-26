@@ -118,7 +118,7 @@ function map.eventHandler(event, ...)
         end
 
         if roomExists(map.currentRoomID) then
-            map.set("currentRoomName", getRoomName(map.currentRoomID)))
+            map.set("currentRoomName", getRoomName(map.currentRoomID))
             map.set("currentRoomArea", getRoomArea(map.currentRoomID))
             map.set("currentRoomExits", getRoomExits(map.currentRoomID))
             -- check handling of custom exits here
@@ -570,6 +570,7 @@ function map.set_portal(name)
             map.echo("Creating portal destination")
             create_room(nil, {getRoomCoordinates(map.currentRoomID)})
             force_portal = false
+        end
     else
         map.echo("Not mapping",false,true)
     end
