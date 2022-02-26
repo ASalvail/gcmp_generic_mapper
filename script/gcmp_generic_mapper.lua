@@ -1025,22 +1025,17 @@ local function getRoomStubs(roomID)
     return exits
 end
 
-local function connect_rooms(ID1, ID2, dir1, dir2, no_check)
+local function connect_rooms(ID1, ID2, dir1)
     -- makes a connection between rooms
     -- can make backwards connection without a check
     local match = false
-    if not ID1 and ID2 and dir1 then
-        error("Connect Rooms: Missing Required Arguments.",2)
-    end
-    dir2 = dir2 or reverse_dirs[dir1]
+    local dir2 = reverse_dirs[dir1]
     -- check handling of custom exits here
     if stubmap[dir1] <= 12 then
         setExit(ID1,ID2,stubmap[dir1])
     else
         addSpecialExit(ID1, ID2, dir1)
         setRoomUserData(ID1,"exit " .. dir1,ID2)
-    end
-    if stubmap[dir1] > 12 then
         -- check handling of custom exits here
         setRoomUserData(ID1,"stub "..dir1, stubmap[dir1])
     end
@@ -1056,17 +1051,15 @@ local function connect_rooms(ID1, ID2, dir1, dir2, no_check)
     if map.mode ~= "complex" then
         local stubs = getRoomStubs(ID2)
         if stubs[dir2] then match = true end
-        if (match or no_check) then
+        if (match) then
             -- check handling of custom exits here
-            if stubmap[dir1] <= 12 then
+            if stubmap[dir2] <= 12 then
                 setExit(ID2,ID1,stubmap[dir2])
             else
                 addSpecialExit(ID2, ID1, dir2)
                 setRoomUserData(ID2,"exit " .. dir2,ID1)
-            end
-            if stubmap[dir2] > 12 then
                 -- check handling of custom exits here
-                setRoomUserData(ID2,"stub "..dir2, stubmap[dir2])
+                setRoomUserData(ID2,"stub " .. dir2, stubmap[dir2])
             end
         end
     end
