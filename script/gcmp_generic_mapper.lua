@@ -1,7 +1,7 @@
 -- Jor'Mox's Generic Map Script
 -- the script self-updates, changing this value will bring an update to all installations
 -- make sure versions.lua has the latest version in it
-local version = "2.0.24"
+-- local version = "2.0.24"
 
     -- look into options for non-standard door usage for speedwalk
     -- come up with aliases to set translations and custom exits, add appropriate help info
@@ -12,11 +12,8 @@ map = map or {}
 
 
 map.character = map.character or ""
-map.prompt = map.prompt or {}
 map.save = map.save or {}
 map.save.recall = map.save.recall or {}
-map.save.prompt_pattern = map.save.prompt_pattern or {}
-map.save.ignore_patterns = map.save.ignore_patterns or {}
 
 local oldstring = string
 local string = utf8
@@ -30,7 +27,7 @@ string.ends = oldstring.ends
 local profilePath = getMudletHomeDir()
 profilePath = profilePath:gsub("\\","/")
 
-local find_portal, force_portal, find_prompt, downloading, walking, help_shown
+local find_portal, force_portal, downloading, walking, help_shown
 local mt = getmetatable(map) or {}
 
 local exitmap = {
@@ -87,21 +84,12 @@ local err_tag = "<255,0,0>(<178,34,34>error<255,0,0>): <255,255,255>"
 
 map.registeredEvents = {
     registerAnonymousEventHandler("gmcp.room.info", "map.eventHandler"),
-    registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
-    registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
-    registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
-    registerAnonymousEventHandler("sysConnectionEvent", "map.eventHandler"),
-    registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
     registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
-    registerAnonymousEventHandler("onMoveFail", "map.eventHandler"),
-    registerAnonymousEventHandler("onVisionFail", "map.eventHandler"),
-    registerAnonymousEventHandler("onRandomMove", "map.eventHandler"),
-    registerAnonymousEventHandler("onForcedMove", "map.eventHandler"),
-    registerAnonymousEventHandler("onNewRoom", "map.eventHandler"),
-    registerAnonymousEventHandler("onNewLine", "map.eventHandler"),
-    registerAnonymousEventHandler("mapOpenEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
+    --registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
+    registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
+    registerAnonymousEventHandler("sysInstall", "map.eventHandler"),
     registerAnonymousEventHandler("mapStop", "map.eventHandler"),
-    registerAnonymousEventHandler("onPrompt", "map.eventHandler"),
     registerAnonymousEventHandler("sysManualLocationSetEvent", "map.eventHandler"),
     registerAnonymousEventHandler("sysUninstallPackage", "map.eventHandler")
     }
@@ -163,6 +151,7 @@ function map.eventHandler(event, ...)
         end
     elseif event == "sysDataSendRequest" then
         capture_move_cmd(arg[1])
+        --[[
         -- check to prevent multiple version checks in a row without user intervention
         if map.update_waiting and map.update_timer then
             map.update_waiting = nil
@@ -170,17 +159,21 @@ function map.eventHandler(event, ...)
         elseif not map.update_waiting and not map.update_timer then
             map.checkVersion()
         end
+        --]]
     elseif event == "sysDownloadDone" and downloading then
         local file = arg[1]
         if string.ends(file,"/map.dat") then
             loadMap(file)
             downloading = false
             map.echo("Map File Loaded.")
+        --[[
         elseif string.ends(file,"/versions.lua") then
             check_version()
         elseif string.ends(file,"/generic_mapper.xml") then
             update_version()
+        --]]
         end
+    --[[
     elseif event == "sysDownloadError" and downloading then
         local file = arg[1]
         if string.ends(file,"/versions.lua") and mudlet.translations.interfacelanguage == "zh_CN" then
@@ -190,6 +183,7 @@ function map.eventHandler(event, ...)
                 map.checkVersion()
             end
         end
+    --]]
     elseif event == "sysLoadEvent" or event == "sysInstall" then
         config()
     elseif event == "mapStop" then
@@ -1357,6 +1351,7 @@ end
 -------------
 -- Versioning
 -------------
+--[[
 local function check_version()
     downloading = false
     local path = profilePath .. "/map downloads/versions.lua"
@@ -1368,7 +1363,7 @@ local function check_version()
         map.echo(string.format("The Generic Mapping Script is currently <red>%d<reset> versions behind.",#versions - pos))
         map.echo("To update now, please type: <yellow>map update<reset>")
     end
-    map.update_timer = tempTimer(3600, [[map.checkVersion()]])
+    map.update_timer = tempTimer(3600, [[map.checkVersion()] ])
 end
 
 function map.checkVersion()
@@ -1400,3 +1395,4 @@ function map.updateVersion()
     downloading = true
     downloadFile(path .. file, map.configs.download_path .. file)
 end
+--]]
