@@ -30,7 +30,7 @@ string.ends = oldstring.ends
 local profilePath = getMudletHomeDir()
 profilePath = profilePath:gsub("\\","/")
 
-local find_portal, room_detected, force_portal, find_prompt, downloading, walking, help_shown
+local find_portal, force_portal, find_prompt, downloading, walking, help_shown
 local mt = getmetatable(map) or {}
 
 local exitmap = {
@@ -307,7 +307,7 @@ local function config()
     end
 end
 
-local bool_configs = {'stretch_map', 'search_on_look', 'speedwalk_wait', 'speedwalk_random',
+local bool_configs = {'stretch_map', 'speedwalk_wait', 'speedwalk_random',
     'debug', 'use_translation'}
 -- function intended to be used by an alias to change config values and save them to a file for later
 function map.setConfigs(key, val, sub_key)
@@ -983,24 +983,24 @@ local function check_doors(roomID,exits)
     return statuses
 end
 
-local function find_room(name, area)
+local function find_room(nameOrID, area)
     -- looks for rooms with a particular name, and if given, in a specific area
-    local rooms = searchRoom(name)  -- {room_id: room_name}
+    local rooms = searchRoom(nameOrID)  -- {room_id: room_name}
     if type(area) == "string" then
-        local areas = getAreaTable() or {}
+        local areas = getAreaTable() or {} -- {a_name: a_ID}
+        local area_id
         for k,v in pairs(areas) do
             if string.lower(k) == string.lower(area) then
-                area = v
+                area_id = v
                 break
             end
         end
-        area = areas[area] or nil
     end
     -- filter on name and area
     for k,v in pairs(rooms) do
-        if string.lower(v) ~= string.lower(name) then
+        if string.lower(v) ~= string.lower(nameOfID) or k ~= nameOrID then
             rooms[k] = nil
-        elseif area and getRoomArea(k) ~= area then
+        elseif area and getRoomArea(k) ~= area_id then
             rooms[k] = nil
         end
     end
@@ -1014,7 +1014,7 @@ local function getRoomStubs(roomID)
     -- check handling of custom exits here
     local tmp
     for i = 13,#stubmap do
-        tmp = tonumber(getRoomUserData(roomID,"stub "..stubmap[i])) or tonumber(getRoomUserData(roomID,"stub"..stubmap[i])) -- for old version
+        tmp = tonumber(getRoomUserData(roomID,"stub "..stubmap[i]))
         if tmp then table.insert(stubs,tmp) end
     end
 
@@ -1236,7 +1236,7 @@ end
 -- Speedwalking
 ---------------
 
-function map.find_path(roomName,areaName,return_tables)
+function map.find_path(roomName,areaName)
     areaName = (areaName ~= "" and areaName) or nil
     local rooms = find_room(roomName,areaName)
     local found,dirs = false,{}
@@ -1248,17 +1248,10 @@ function map.find_path(roomName,areaName,return_tables)
             path = speedWalkPath
         end
     end
-    if return_tables then
-        if table.is_empty(path) then
-            path, dirs = nil, nil
-        end
-        return path, dirs
+    if #dirs > 0 then
+        map.echo("Path to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ": " .. table.concat(dirs,", "))
     else
-        if #dirs > 0 then
-            map.echo("Path to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ": " .. table.concat(dirs,", "))
-        else
-            map.echo("No path found to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ".",false,true)
-        end
+        map.echo("No path found to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ".",false,true)
     end
 end
 
