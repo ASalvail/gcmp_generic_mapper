@@ -105,7 +105,6 @@ function map.eventHandler(event, ...)
         map.set("currentRoomID", roomID)
 
         map.set("prevRoomName", map.currentRoomName)
-        map.set("prevRoomArea", map.currentRoomArea)
         map.set("prevRoomExits", map.currentRoomExits)
 
         -- find the connection direction
@@ -206,11 +205,9 @@ end
 map.defaults = {
     mode = "normal", -- can be normal, or complex
     stretch_map = true,
-    search_on_look = true,
     speedwalk_delay = 1,
     speedwalk_wait = true,
     speedwalk_random = true,
-    max_search_distance = 1,
     map_window = {
         x = 0,
         y = 0,
@@ -219,7 +216,6 @@ map.defaults = {
         origin = "topright",
         shown = false,
     },
-    prompt_test_patterns = {"^%[?%a*%]?<.*>", "^%[.*%]%s*>", "^%w*[%.?!:]*>", "^%[.*%]", "^[Hh][Pp]:.*>"},
     custom_exits = {},  -- format: short_exit = {long_exit, reverse_exit, x_dif, y_dif, z_dif}
                         -- ex: { us = {"upsouth", "downnorth", 0, -1, 1}, dn = {"downnorth", "upsouth", 0, 1, -1} }
     use_translation = true,
@@ -233,7 +229,7 @@ map.defaults = {
         wd = 'wd', wu = 'wu', westdown = 'westdown', westup = 'westup',
     },
     debug = false,
-    download_path = "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper",
+    --download_path = "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper",
 }
 
 local function config()
@@ -263,9 +259,11 @@ local function config()
         stubmap[v[1]] = count
     end
     -- update to the current download path
+    --[[
     if map.configs.download_path == "https://raw.githubusercontent.com/JorMox/Mudlet/development/src/mudlet-lua/lua/generic-mapper" then
         map.configs.download_path = "https://raw.githubusercontent.com/Mudlet/Mudlet/development/src/mudlet-lua/lua/generic-mapper"
     end
+    --]]
 
     -- setup metatable to store sensitive values
     local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomArea",
@@ -286,14 +284,12 @@ local function config()
         end
     setmetatable(map, mt)
     map.set("mode", configs.mode)
-    map.set("version", version)
+    -- map.set("version", version)
 
     local saves = {}
     if io.exists(path.."/map_save.dat") then
         table.load(path.."/map_save.dat",saves)
     end
-    saves.prompt_pattern = saves.prompt_pattern or {}
-    saves.ignore_patterns = saves.ignore_patterns or {}
     saves.recall = saves.recall or {}
     map.save = saves
 
@@ -337,14 +333,6 @@ function map.setConfigs(key, val, sub_key)
                 end
             else
                 map.echo("Invalid direction/command.", false, true)
-            end
-        elseif key == "prompt_test_patterns" then
-            if not table.contains(map.configs.prompt_test_patterns) then
-                table.insert(map.configs.prompt_test_patterns, val)
-                map.echo("Prompt pattern added to list: " .. val)
-            else
-                table.remove(map.configs.prompt_test_patterns, table.index_of(map.configs.prompt_test_patterns, val))
-                map.echo("Prompt pattern removed from list: " .. val)
             end
         elseif key == "custom_exits" then
             if type(val) == "table" then
