@@ -28,7 +28,7 @@ string.ends = oldstring.ends
 local profilePath = getMudletHomeDir()
 profilePath = profilePath:gsub("\\","/")
 
-local find_portal, force_portal, downloading, walking, help_shown
+local downloading, walking
 local mt = getmetatable(map) or {}
 
 local exitmap = {
@@ -586,7 +586,7 @@ local function create_room(dir, coords)
     -- makes a new room with captured name and exits
     -- links with other rooms as appropriate
     if map.mapping then
-        map.echo("New Room: " .. map.currentRoomName,false,false,(dir or find_portal or force_portal) and true or false)
+        map.echo("New Room: " .. map.currentRoomName,false,false,dir and true or false)
 
         addRoom(map.currentRoomID)
         setRoomArea(map.currentRoomID, map.currentRoomAreaID)
@@ -607,13 +607,9 @@ local function create_room(dir, coords)
                 end
             end
         end
-        if find_portal or force_portal then
-            addSpecialExit(map.prevRoomID, map.currentRoomID, (find_portal or force_portal))
-            setRoomUserData(map.currentRoomID,"portals",tostring(map.prevRoomID)..":"..(find_portal or force_portal))
-        end
-        
+
         local pos_rooms = getRoomsByPosition(map.currentRoomAreaID, unpack(coords))
-        if not (find_portal or force_portal) and map.configs.stretch_map and table.size(pos_rooms) > 1 then
+        if map.configs.stretch_map and table.size(pos_rooms) > 1 then
             stretch_map(dir,unpack(coords))
         end
     end
@@ -662,42 +658,13 @@ end
 -------------------
 -- Movement Capture
 -------------------
+
 local function move_map()
     -- tries to move the map to the next room
     if move == "recall" and map.save.recall[map.character] then
         centerview(map.save.recall[map.character])
     end
 end
-
-local function capture_move_cmd(dir)
-    -- captures valid movement commands
-
-    --[[
-    local configs = map.configs
-
-    dir = string.lower(dir)
-    if dir == "/" then dir = "recall" end
-    if dir == configs.lang_dirs['l'] then dir = configs.lang_dirs['look'] end
-    if configs.use_translation then
-        dir = configs.translate[dir] or dir
-    end
-    local door = string.match(dir,"open (%a+)")
-    if map.mapping and door and (exitmap[door] or short[door]) then
-        local doors = getDoors(map.currentRoomID)
-        if not doors[door] and not doors[short[door] ] then
-            map.set_door(door,"","")
-        end
-    end
-    local portal = string.match(dir,"enter (%a+)")
-    if map.mapping and portal then
-        local portals = getSpecialExitsSwap(map.currentRoomID)
-        if not portals[dir] then
-            map.set_portal(dir, true)
-        end
-    end
-    --]]
-end
-
 
 ---------------
 -- Speedwalking
@@ -946,30 +913,15 @@ function map.set_recall()
     map.echo("Recall room set to: " .. getRoomName(map.currentRoomID) .. ".")
 end
 
-function map.set_portal(name)
+function map.set_portal(command)
     -- creates a new portal going from the last room to the current one
     if map.mapping then
-        if not string.starts(name,"-f ") then
-            find_portal = name
-        else
-            name = string.gsub(name,"^-f ","")
-            force_portal = name
-        end
-
-        if find_portal then
-            map.echo("Adding portal destination, linking rooms",false,false,true)
-            addSpecialExit(map.prevRoomID, map.currentRoomID, find_portal)
-            local portals = getRoomUserData(map.currentRoomID, "portals") or ""
-            portals = portals .. "," .. tostring(map.prevRoomID)..":"..find_portal
-            setRoomUserData(map.currentRoomID,"portals",portals)
-            centerview(map.currentRoomID)
-            find_portal = false
-        elseif force_portal then
-            find_portal = false
-            map.echo("Creating portal destination")
-            create_room(nil, {getRoomCoordinates(map.currentRoomID)})
-            force_portal = false
-        end
+        map.echo("Adding portal destination, linking rooms")
+        addSpecialExit(map.prevRoomID, map.currentRoomID, command)
+        local portals = getRoomUserData(map.currentRoomID, "portals") or ""
+        portals = portals .. "," .. tostring(map.prevRoomID)..":"..command
+        setRoomUserData(map.currentRoomID,"portals",portals)
+        centerview(map.currentRoomID)
     else
         map.echo("Not mapping",false,true)
     end
@@ -1475,9 +1427,8 @@ function map.eventHandler(event, ...)
             continue_walk(true)
         end
         print_wait_echoes()
+    --[[
     elseif event == "sysDataSendRequest" then
-        capture_move_cmd(arg[1])
-        --[[
         -- check to prevent multiple version checks in a row without user intervention
         if map.update_waiting and map.update_timer then
             map.update_waiting = nil
@@ -1485,7 +1436,7 @@ function map.eventHandler(event, ...)
         elseif not map.update_waiting and not map.update_timer then
             map.checkVersion()
         end
-        --]]
+    --]]
     elseif event == "sysDownloadDone" and downloading then
         local file = arg[1]
         if string.ends(file,"/map.dat") then
