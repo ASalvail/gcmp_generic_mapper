@@ -310,7 +310,7 @@ local function get_area_id_by_match(area_name, exact)
     end
 end
 
-function map.echoRoomList(area_name, exact)
+function map.echo_room_list(area_name, exact)
     local area_id, msg, multiples
     local list_color, other_color = "DarkSlateGrey","LightSlateGray"
     if tonumber(area_name) then
@@ -365,7 +365,7 @@ function map.echoRoomList(area_name, exact)
     resetFormat()
 end
 
-function map.echoAreaList()
+function map.echo_area_list()
     local total_room_count = 0
     local rlist = getAreaTableSwap()
     local list_color, other_color = "DarkSlateGrey","LightSlateGray"
