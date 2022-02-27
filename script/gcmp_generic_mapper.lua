@@ -14,7 +14,6 @@ map = {}
 
 map.character = map.character or ""
 map.save = map.save or {}
-map.save.recall = map.save.recall or {}
 
 local oldstring = string
 local string = utf8
@@ -170,7 +169,6 @@ local function config()
     if io.exists(path.."/map_save.dat") then
         table.load(path.."/map_save.dat",saves)
     end
-    saves.recall = saves.recall or {}
     map.save = saves
 
     if map.configs.map_window.shown then
@@ -657,17 +655,6 @@ local function findAreaID(name)
     return areaID
 end
 
--------------------
--- Movement Capture
--------------------
-
-local function move_map()
-    -- tries to move the map to the next room
-    if move == "recall" and map.save.recall[map.character] then
-        centerview(map.save.recall[map.character])
-    end
-end
-
 ---------------
 -- Speedwalking
 ---------------
@@ -906,13 +893,6 @@ function map.set_exit(dir,roomID)
     else
         map.echo("Not mapping",false,true)
     end
-end
-
-function map.set_recall()
-    -- assigned the current room to be recall for the current character
-    map.save.recall[map.character] = map.currentRoomID
-    table.save(profilePath .. "/map downloads/map_save.dat",map.save)
-    map.echo("Recall room set to: " .. getRoomName(map.currentRoomID) .. ".")
 end
 
 function map.set_portal(command)
