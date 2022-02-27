@@ -9,7 +9,7 @@
 
 mudlet = mudlet or {}
 mudlet.mapper_script = true
-map = {}
+map = map or {}
 
 local oldstring = string
 local string = utf8
@@ -939,13 +939,11 @@ function map.start_mapping()
         if table.is_empty(getAreaRooms(area_id)) then
             -- New area
             map.set("current_room_area_id", area_id)
-            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the new area ".. gmcp.room.info.area)
         else
             -- Area already exists, start in a sub-area
             local sub_area_name = f"{gmcp_area}/{map.current_room_name}({map.current_room_id})"
             map.set("current_room_area_id", find_area_id(sub_area_name))
             map.set("disconnected_area", true)
-            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. sub_area_name)
         end
         create_room(nil, {0,0,0})
     else
@@ -1271,7 +1269,10 @@ map.registered_events = {
 
 function map.eventHandler(event, ...)
     if event == "gmcp.room.info" then
-        display(gmcp.room.info)
+        if map.configs.debug then
+            echo("GMCP ")
+            display(gmcp.room.info)
+        end
 
         local room_id = tonumber(gmcp.room.info.num)
         if room_id == map.current_room_id and #map.current_room_exits == #gmcp.room.info.exits then
