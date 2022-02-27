@@ -1285,7 +1285,7 @@ function map.eventHandler(event, ...)
 
         -- save current info as previous' room info
         map.set("prev_room_id", map.current_room_id)
-        map.set("prev_room_rame", map.current_room_name)
+        map.set("prev_room_name", map.current_room_name)
         map.set("prev_room_exits", map.current_room_exits)
         map.set("prev_room_area_id", map.current_room_area_id)
 
@@ -1341,8 +1341,8 @@ function map.eventHandler(event, ...)
                     end
                     local x,y,z = getRoomCoordinates(map.prev_room_id)
                     local dx,dy,dz = unpack(coord_map[stub_map[dir]])
-                    display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..dir.." "..
-                            tostring(map.prev_room_id) .. " in area " .. getRoomAreaName(map.current_room_area_id))
+                    map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..dir.." "..
+                            tostring(map.prev_room_id) .. " in area " .. getRoomAreaName(map.current_room_area_id), true)
                     create_room(dir, {x+dx,y+dy,z+dz})
                 else
                     -- Can't share same area
@@ -1368,8 +1368,8 @@ function map.eventHandler(event, ...)
                     end
                     if not unconnected_dir then
                         -- Notify the player of the break and offer to make a portal
-                        map.echo([[This room doesn't connect to the precedent through a cardinal exit or a recognized special direction.
-                                    To enable speedwalking through that exit, please `add portal <entry command>`.
+                        map.echo([[This room doesn't connect to the precedent through a cardinal exit or a recognized special direction. \z
+                                    To enable speedwalking through that exit, please `add portal <entry command>`. \z
                                     This will link the previous room to this one using the command.]])
                     end
                     create_room(nil, {0,0,0})
