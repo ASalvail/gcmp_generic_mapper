@@ -85,7 +85,7 @@ local err_tag = "<255,0,0>(<178,34,34>error<255,0,0>): <255,255,255>"
 map.defaults = {
     mode = "normal", -- can be normal, or complex
     stretch_map = true,
-    speedwalk_delay = 1,
+    speedwalk_delay = 0.2,
     speedwalk_wait = true,
     speedwalk_random = true,
     map_window = {
@@ -511,6 +511,7 @@ local function connect_rooms(ID1, ID2, dir1)
 end
 
 local function reconnectRooms(baseRoomID, disconnectedRoomID)
+    map.echo("Reconnecting rooms...")
     local baseAreaID = getRoomArea(baseRoomID)
     local disconnectedAreaID = getRoomArea(disconnectedRoomID)
     local roomsToProcess = getAreaRooms(disconnectedAreaID)
@@ -519,11 +520,14 @@ local function reconnectRooms(baseRoomID, disconnectedRoomID)
     for _, id in pairs(roomsToProcess) do
         roomExits[id] = getRoomExits(id)
     end
+    roomExits[baseRoomID] = getRoomExits(baseRoomID)
 
     -- Make sure the directions go both ways
     for id, exits in pairs(roomExits) do
         for dir, dest in pairs(exits) do
-            roomExits[dest][reverse_dirs[dir]] = id
+            if roomExits[dest] then
+                roomExits[dest][reverse_dirs[dir]] = id
+            end
         end
     end
 
@@ -534,17 +538,17 @@ local function reconnectRooms(baseRoomID, disconnectedRoomID)
     -- Walk the rooms connected to baseRoomID and change their area.
     while not table.is_empty(toReconnect) do
         curID = table.remove(toReconnect)
-        if getRoomArea(curID) == disconnectedAreaID then
-            setRoomArea(curID, baseAreaID)
-            x, y, z = getRoomCoordinates(curID)
-            -- Reconnect all its exits
-            for dir, dest in pairs(roomExits[curID]) do
+        setRoomArea(curID, baseAreaID)
+        x, y, z = getRoomCoordinates(curID)
+        -- Reconnect all its exits
+        for dir, dest in pairs(roomExits[curID]) do
+            if getRoomArea(dest) == disconnectedAreaID then
                 table.insert(toReconnect, dest)
-                dx, dy, dy = unpack(coordmap[dir])
-                setRoomCoordinates(dest, {x+dx, y+dy, z+dz})
+                dx, dy, dz = unpack(coordmap[stubmap[dir]])
+                setRoomCoordinates(dest, x+dx, y+dy, z+dz)
             end
-            roomExits[curID] = nil
         end
+        roomExits[curID] = nil
     end
     if table.is_empty(getAreaRooms(disconnectedAreaID)) then
         deleteArea(disconnectedAreaID)
@@ -667,6 +671,8 @@ end
 
 local function capture_move_cmd(dir)
     -- captures valid movement commands
+
+    --[[
     local configs = map.configs
 
     dir = string.lower(dir)
@@ -678,7 +684,7 @@ local function capture_move_cmd(dir)
     local door = string.match(dir,"open (%a+)")
     if map.mapping and door and (exitmap[door] or short[door]) then
         local doors = getDoors(map.currentRoomID)
-        if not doors[door] and not doors[short[door]] then
+        if not doors[door] and not doors[short[door] ] then
             map.set_door(door,"","")
         end
     end
@@ -689,6 +695,7 @@ local function capture_move_cmd(dir)
             map.set_portal(dir, true)
         end
     end
+    --]]
 end
 
 
@@ -1013,9 +1020,13 @@ function map.start_mapping()
             -- Area already exists, start in a sub-area
             local subAreaName = f"{gmcpArea}/{map.currentRoomName}({map.currentRoomID})"
             map.set("currentRoomAreaID", findAreaID(subAreaName))
+            map.set("disconnectedArea", true)
             display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
         end
         create_room(nil, {0,0,0})
+    else
+        map.set("currentRoomAreaID", getRoomArea(map.currentRoomID))
+        map.set("disconnectedArea", getRoomAreaName(map.currentRoomAreaID) ~= gmcp.room.info.area)
     end
     centerview(map.currentRoomID)
 end
@@ -1387,7 +1398,7 @@ function map.eventHandler(event, ...)
                 
             if not roomExists then
                 -- Need to create room
-                local gmcpArea = string:trim(gmcp.room.info.area)
+                local gmcpArea = string.trim(gmcp.room.info.area)
                 local prevAreaName = map.prevRoomAreaID and getRoomAreaName(map.prevRoomAreaID) or ""
 
                 if dir then
@@ -1439,6 +1450,7 @@ function map.eventHandler(event, ...)
                 if areaName == gmcp.room.info.area then
                     if map.disconnectedArea and dir then
                         -- Enters a base area from a disconnected area. Reconnect
+                        display("Reconnecting area...")
                         reconnectRooms(map.currentRoomID, map.prevRoomID)
                     end
                     map.set("disconnectedArea", false)
@@ -1446,6 +1458,10 @@ function map.eventHandler(event, ...)
                     if not map.disconnectedArea and dir then
                         -- Enters a disconnected area from a base area. Reconnect
                         reconnectRooms(map.prevRoomID, map.currentRoomID)
+                        map.set("disconnectedArea", false)
+                    else
+                        -- If one enters the disconnected area from a non-card dir.
+                        map.set("disconnectedArea", true)
                     end
                 end
             end
@@ -1458,6 +1474,7 @@ function map.eventHandler(event, ...)
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
         end
+        print_wait_echoes()
     elseif event == "sysDataSendRequest" then
         capture_move_cmd(arg[1])
         --[[
@@ -1510,5 +1527,5 @@ function map.eventHandler(event, ...)
 end
 
 -- TODO: Remove this, for debug only
-deleteArea("Earth")
+send('look')
 map.eventHandler("sysInstall")
