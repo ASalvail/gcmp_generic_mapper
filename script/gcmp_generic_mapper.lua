@@ -1396,8 +1396,8 @@ function map.eventHandler(event, ...)
             if dir or unconnected_dir then
                 connect_rooms(map.prev_room_id, map.current_room_id, dir or unconnected_dir)
             end
-            centerview(map.current_room_id)
         end
+        centerview(map.current_room_id)
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
         end
