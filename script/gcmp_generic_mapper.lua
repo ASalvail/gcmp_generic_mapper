@@ -13,7 +13,6 @@ map = {}
 
 
 map.character = map.character or ""
-map.save = map.save or {}
 
 local oldstring = string
 local string = utf8
@@ -164,12 +163,6 @@ local function config()
     setmetatable(map, mt)
     map.set("mode", configs.mode)
     -- map.set("version", version)
-
-    local saves = {}
-    if io.exists(path.."/map_save.dat") then
-        table.load(path.."/map_save.dat",saves)
-    end
-    map.save = saves
 
     if map.configs.map_window.shown then
         map.showMap(true)
