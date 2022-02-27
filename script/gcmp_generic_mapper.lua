@@ -11,9 +11,6 @@ mudlet = mudlet or {}
 mudlet.mapper_script = true
 map = {}
 
-
-map.character = map.character or ""
-
 local oldstring = string
 local string = utf8
 string.format = oldstring.format
@@ -23,13 +20,13 @@ string.split = oldstring.split
 string.ends = oldstring.ends
 
 
-local profilePath = getMudletHomeDir()
-profilePath = profilePath:gsub("\\","/")
+local profile_path = getMudletHomeDir()
+profile_path = profile_path:gsub("\\","/")
 
 local downloading, walking
 local mt = getmetatable(map) or {}
 
-local exitmap = {
+local exit_map = {
     n = 'north',    ne = 'northeast',   nw = 'northwest',   e = 'east',
     w = 'west',     s = 'south',        se = 'southeast',   sw = 'southwest',
     u = 'up',       d = 'down',         ["in"] = 'in',      out = 'out',
@@ -39,11 +36,11 @@ local exitmap = {
 }
 
 local short = {}
-for k,v in pairs(exitmap) do
+for k,v in pairs(exit_map) do
     short[v] = k
 end
 
-local stubmap = {
+local stub_map = {
     north = 1,      northeast = 2,      northwest = 3,      east = 4,
     west = 5,       south = 6,          southeast = 7,      southwest = 8,
     up = 9,         down = 10,          ["in"] = 11,        out = 12,
@@ -56,7 +53,7 @@ local stubmap = {
     [17] = "eastup", [18] = "westdown", [19] = "westup",    [20] = "eastdown",
 }
 
-local coordmap = {
+local coord_map = {
     [1] = {0,1,0},      [2] = {1,1,0},      [3] = {-1,1,0},     [4] = {1,0,0},
     [5] = {-1,0,0},     [6] = {0,-1,0},     [7] = {1,-1,0},     [8] = {-1,-1,0},
     [9] = {0,0,1},      [10] = {0,0,-1},    [11] = {0,0,0},     [12] = {0,0,0},
@@ -113,7 +110,7 @@ map.defaults = {
 local function config()
     local defaults = map.defaults
     local configs = map.configs or {}
-    local path = profilePath.."/map downloads"
+    local path = profile_path.."/map downloads"
     if not io.exists(path) then lfs.mkdir(path) end
     -- load stored configs from file if it exists
     if io.exists(path.."/configs.lua") then
@@ -128,13 +125,13 @@ local function config()
     end
     -- incorporate custom exits
     for k,v in pairs(map.configs.custom_exits) do
-        exitmap[k] = v[1]
+        exit_map[k] = v[1]
         reverse_dirs[v[1]] = v[2]
         short[v[1]] = k
-        local count = #coordmap + 1
-        coordmap[count] = {v[3],v[4],v[5]}
-        stubmap[count] = v[1]
-        stubmap[v[1]] = count
+        local count = #coord_map + 1
+        coord_map[count] = {v[3],v[4],v[5]}
+        stub_map[count] = v[1]
+        stub_map[v[1]] = count
     end
     -- update to the current download path
     --[[
@@ -144,8 +141,8 @@ local function config()
     --]]
 
     -- setup metatable to store sensitive values
-    local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomAreaID",
-        "prevRoomID", "prevRoomName", "prevRoomExits", "prevRoomAreaID", "mode", "version", "disconnectedArea"}
+    local protected = {"mapping", "current_room_id", "current_room_name", "current_room_exits", "current_room_area_id",
+        "prev_room_id", "prev_room_name", "prev_room_exits", "prev_room_area_id", "mode", "version", "disconnected_area"}
     mt = getmetatable(map) or {}
     mt.__index = mt
     mt.__newindex = function(tbl, key, value)
@@ -165,14 +162,14 @@ local function config()
     -- map.set("version", version)
 
     if map.configs.map_window.shown then
-        map.showMap(true)
+        map.show_map(true)
     end
 end
 
 local bool_configs = {'stretch_map', 'speedwalk_wait', 'speedwalk_random',
     'debug', 'use_translation'}
 -- function intended to be used by an alias to change config values and save them to a file for later
-function map.setConfigs(key, val, sub_key)
+function map.set_configs(key, val, sub_key)
     if val == "off" or val == "false" then
         val = false
     elseif val == "on" or val == "true" then
@@ -191,7 +188,7 @@ function map.setConfigs(key, val, sub_key)
                 map.echo("Unknown map config.",false, true)
             end
         elseif key =="lang_dirs" then
-            sub_key = exitmap[sub_key] or sub_key
+            sub_key = exit_map[sub_key] or sub_key
             if map.configs.lang_dirs[sub_key] then
                 local long_dir, short_dir = val[1],val[2]
                 if #long_dir < #short_dir then long_dir, short_dir = short_dir, long_dir end
@@ -234,12 +231,12 @@ function map.setConfigs(key, val, sub_key)
             return
         end
     end
-    table.save(profilePath.."/map downloads/configs.lua",map.configs)
+    table.save(profile_path.."/map downloads/configs.lua",map.configs)
     config()
 end
 
-function map.load_map(address)
-    local path = profilePath .. "/map downloads/map.dat"
+function map.loadMap(address)
+    local path = profile_path .. "/map downloads/map.dat"
     if not address then
         loadMap(path)
         map.echo("Map reloaded from local copy.")
@@ -256,9 +253,9 @@ end
 ---------------------
 -- Printing Functions
 ---------------------
-local function show_err(msg,debug)
-    map.echo(msg,debug,true)
-    error(msg,2)
+local function show_err(msg, debug)
+    map.echo(msg, debug, true)
+    error(msg, 2)
 end
 
 local function print_echoes(what, debug, err)
@@ -273,8 +270,8 @@ local function print_echoes(what, debug, err)
 end
 
 local function print_wait_echoes()
-    for k,v in ipairs(wait_echo) do
-        print_echoes(v[1],v[2],v[3])
+    for k, v in ipairs(wait_echo) do
+        print_echoes(v[1], v[2], v[3])
     end
     wait_echo = {}
 end
@@ -283,118 +280,118 @@ function map.echo(what, debug, err, wait)
     if debug and not map.configs.debug then return end
     what = tostring(what) or ""
     if wait then
-        table.insert(wait_echo,{what, debug, err})
+        table.insert(wait_echo, {what, debug, err})
         return
     end
     print_wait_echoes()
     print_echoes(what, debug, err)
 end
 
-local function getAreaIDByMatch(areaname, exact)
-    local areaname = areaname:lower()
+local function get_area_id_by_match(area_name, exact)
+    area_name = area_name:lower()
     local list = getAreaTable()
 
     -- iterate over the list of areas, matching them with substring match.
     -- if we get match a single area, then return its ID, otherwise return
     -- 'false' and a message that there are than one are matches
-    local returnid, fullareaname, multipleareas = nil, nil, {}
+    local return_id, full_area_name, multiple_areas = nil, nil, {}
     for area, id in pairs(list) do
-        if (not exact and area:lower():find(areaname, 1, true)) or (exact and areaname == area:lower()) then
-            returnid = id
-            fullareaname = area
-            multipleareas[#multipleareas+1] = area
+        if (not exact and area:lower():find(area_name, 1, true)) or (exact and area_name == area:lower()) then
+            return_id = id
+            full_area_name = area
+            multiple_areas[#multiple_areas+1] = area
         end
     end
 
-    if #multipleareas == 1 then
-        return returnid, fullareaname
+    if #multiple_areas == 1 then
+        return return_id, full_area_name
     else
-        return nil, nil, multipleareas
+        return nil, nil, multiple_areas
     end
 end
 
-function map.echoRoomList(areaname, exact)
-    local areaid, msg, multiples
-    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
-    if tonumber(areaname) then
-        areaid = tonumber(areaname)
-        msg = getAreaTableSwap()[areaid]
+function map.echoRoomList(area_name, exact)
+    local area_id, msg, multiples
+    local list_color, other_color = "DarkSlateGrey","LightSlateGray"
+    if tonumber(area_name) then
+        area_id = tonumber(area_name)
+        msg = getAreaTableSwap()[area_id]
     else
-        areaid, msg, multiples = getAreaIDByMatch(areaname, exact)
+        area_id, msg, multiples = get_area_id_by_match(area_name, exact)
     end
-    if areaid then
-        local roomlist, endresult = getAreaRooms(areaid) or {}, {}
+    if area_id then
+        local room_list, end_result = getAreaRooms(area_id) or {}, {}
 
         -- obtain a room list for each of the room IDs we got
-        local getRoomName = getRoomName
-        for _, id in pairs(roomlist) do
-            endresult[id] = getRoomName(id)
+        local get_room_name = getRoomName
+        for _, id in pairs(room_list) do
+            end_result[id] = get_room_name(id)
         end
-        roomlist[#roomlist+1], roomlist[0] = roomlist[0], nil
+        room_list[#room_list+1], room_list[0] = room_list[0], nil
         -- sort room IDs so we can display them in order
-        table.sort(roomlist)
+        table.sort(room_list)
 
         local echoLink, format, fg, echo = echoLink, string.format, fg, cecho
         -- now display something half-decent looking
         cecho(format("<%s>List of all rooms in <%s>%s<%s> (areaID <%s>%s<%s> - <%s>%d<%s> rooms):\n",
-            listcolor, othercolor, msg, listcolor, othercolor, areaid, listcolor, othercolor, #roomlist, listcolor))
+            list_color, other_color, msg, list_color, other_color, area_id, list_color, other_color, #room_list, list_color))
         -- use pairs, as we can have gaps between room IDs
-        for _, roomid in pairs(roomlist) do
-            local roomname = endresult[roomid]
-            cechoLink(format("<%s>%7s",othercolor,roomid), 'map.speedwalk('..roomid..')',
-                format("Go to %s (%s)", roomid, tostring(roomname)), true)
-            cecho(format("<%s>: <%s>%s<%s>.\n", listcolor, othercolor, roomname, listcolor))
+        for _, room_id in pairs(room_list) do
+            local room_name = end_result[room_id]
+            cechoLink(format("<%s>%7s",other_color,room_id), 'map.speedwalk('..room_id..')',
+                format("Go to %s (%s)", room_id, tostring(room_name)), true)
+            cecho(format("<%s>: <%s>%s<%s>.\n", list_color, other_color, room_name, list_color))
         end
-    elseif not areaid and #multiples > 0 then
-        local allareas, format = getAreaTable(), string.format
-        local function countrooms(areaname)
-            local areaid = allareas[areaname]
-            local allrooms = getAreaRooms(areaid) or {}
-            local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
+    elseif not area_id and #multiples > 0 then
+        local all_areas, format = getAreaTable(), string.format
+        local function count_rooms(areaname)
+            local area_id = all_areas[areaname]
+            local all_rooms = getAreaRooms(area_id) or {}
+            local areac = (#all_rooms or 0) + (all_rooms[0] and 1 or 0)
             return areac
         end
         map.echo("For which area would you want to list rooms for?")
-        for _, areaname in ipairs(multiples) do
+        for _, area_name in ipairs(multiples) do
             echo("  ")
             setUnderline(true)
-            cechoLink(format("<%s>%-40s (%d rooms)", othercolor, areaname, countrooms(areaname)),
-                'map.echoRoomList("'..areaname..'", true)', "Click to view the room list for "..areaname, true)
+            cechoLink(format("<%s>%-40s (%d rooms)", other_color, area_name, count_rooms(area_name)),
+                'map.echoRoomList("'..area_name..'", true)', "Click to view the room list for "..area_name, true)
             setUnderline(false)
             echo("\n")
         end
     else
-        map.echo(string.format("Don't know of any area named '%s'.", areaname),false,true)
+        map.echo(string.format("Don't know of any area named '%s'.", area_name),false,true)
     end
     resetFormat()
 end
 
 function map.echoAreaList()
-    local totalroomcount = 0
+    local total_room_count = 0
     local rlist = getAreaTableSwap()
-    local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
+    local list_color, other_color = "DarkSlateGrey","LightSlateGray"
 
     -- count the amount of rooms in an area, taking care to count the room in the 0th
     -- index as well if there is one
     -- saves the total room count on the side as well
-    local function countrooms(areaid)
-        local allrooms = getAreaRooms(areaid) or {}
-        local areac = (#allrooms or 0) + (allrooms[0] and 1 or 0)
-        totalroomcount = totalroomcount + areac
+    local function count_rooms(areaid)
+        local all_rooms = getAreaRooms(areaid) or {}
+        local areac = (#all_rooms or 0) + (all_rooms[0] and 1 or 0)
+        total_room_count = total_room_count + areac
         return areac
     end
 
     local getAreaRooms, cecho, fg, echoLink, format = getAreaRooms, cecho, fg, echoLink, string.format
-    cecho(format("<%s>List of all areas we know of (click to view room list):\n",listcolor))
+    cecho(format("<%s>List of all areas we know of (click to view room list):\n",list_color))
     for id = 1,table.maxn(rlist) do
         if rlist[id] then
-            cecho(format("<%s>%7d ", othercolor, id))
-            fg(listcolor)
-            echoLink(format("%-40s (%d rooms)",rlist[id],countrooms(id)), 'map.echoRoomList("'..id..'", true)',
+            cecho(format("<%s>%7d ", other_color, id))
+            fg(list_color)
+            echoLink(format("%-40s (%d rooms)",rlist[id],count_rooms(id)), 'map.echoRoomList("'..id..'", true)',
                 "View the room list for "..rlist[id], true)
             echo("\n")
         end
     end
-    cecho(string.format("<%s>Total amount of rooms in this map: %s\n", listcolor, totalroomcount))
+    cecho(string.format("<%s>Total amount of rooms in this map: %s\n", list_color, total_room_count))
 end
 
 
@@ -402,41 +399,41 @@ end
 -- Room Management
 ------------------
 
-local function add_door(roomID, dir, status)
+local function add_door(room_id, dir, status)
     -- create or remove a door in the designated direction
     -- consider options for adding pickable and passable information
-    dir = exitmap[dir] or dir
-    if not table.contains(exitmap,dir) then
+    dir = exit_map[dir] or dir
+    if not table.contains(exit_map,dir) then
         error("Add Door: invalid direction.",2)
     end
     if type(status) ~= "number" then
         status = assert(table.index_of({"none","open","closed","locked"},status),
             "Add Door: Invalid status, must be none, open, closed, or locked") - 1
     end
-    local exits = getRoomExits(roomID)
+    local exits = getRoomExits(room_id)
     -- check handling of custom exits here
     if not exits[dir] then
-        setExitStub(roomID,stubmap[dir],true)
+        setExitStub(room_id,stub_map[dir],true)
     end
     -- check handling of custom exits here
     if not table.contains({'u','d'},short[dir]) then
-        setDoor(roomID,short[dir],status)
+        setDoor(room_id,short[dir],status)
     else
-        setDoor(roomID,dir,status)
+        setDoor(room_id,dir,status)
     end
 end
 
-local function check_doors(roomID,exits)
+local function check_doors(room_id,exits)
     -- looks to see if there are doors in designated directions
     -- used for room comparison, can also be used for pathing purposes
     if type(exits) == "string" then exits = {exits} end
     local statuses = {}
-    local doors = getDoors(roomID)
+    local doors = getDoors(room_id)
     local dir
-    for k,v in pairs(exits) do
+    for k, v in pairs(exits) do
         dir = short[k] or short[v]
         if table.contains({'u','d'},dir) then
-            dir = exitmap[dir]
+            dir = exit_map[dir]
         end
         if not doors[dir] or doors[dir] == 0 then
             return false
@@ -447,9 +444,9 @@ local function check_doors(roomID,exits)
     return statuses
 end
 
-local function find_room(nameOrID, area)
+local function find_room(name_or_id, area)
     -- looks for rooms with a particular name, and if given, in a specific area
-    local rooms = searchRoom(nameOrID)  -- {room_id: room_name}
+    local rooms = searchRoom(name_or_id)  -- {room_id: room_name}
     local area_id
     if type(area) == "string" then
         local areas = getAreaTable() or {} -- {a_name: a_ID}
@@ -462,7 +459,7 @@ local function find_room(nameOrID, area)
     end
     -- filter on name and area
     for k,v in pairs(rooms) do
-        if string.lower(v) ~= string.lower(nameOfID) or k ~= nameOrID then
+        if string.lower(v) ~= string.lower(name_or_id) or k ~= name_or_id then
             rooms[k] = nil
         elseif area and getRoomArea(k) ~= area_id then
             rooms[k] = nil
@@ -471,20 +468,20 @@ local function find_room(nameOrID, area)
     return rooms
 end
 
-local function getRoomStubs(roomID)
+local function get_room_stubs(room_id)
     -- turns stub info into table similar to exit table
-    local stubs = getExitStubs(roomID)
+    local stubs = getExitStubs(room_id)
     if type(stubs) ~= "table" then stubs = {} end
     -- check handling of custom exits here
     local tmp
-    for i = 13,#stubmap do
-        tmp = tonumber(getRoomUserData(roomID,"stub "..stubmap[i]))
+    for i = 13,#stub_map do
+        tmp = tonumber(getRoomUserData(room_id,"stub "..stub_map[i]))
         if tmp then table.insert(stubs,tmp) end
     end
 
     local exits = {}
     for k,v in pairs(stubs) do
-        exits[stubmap[v]] = 0
+        exits[stub_map[v]] = 0
     end
     return exits
 end
@@ -493,13 +490,13 @@ local function connect_rooms(ID1, ID2, dir1)
     -- makes a connection between rooms
     local dir2 = reverse_dirs[dir1]
     -- check handling of custom exits here
-    if stubmap[dir1] <= 12 then
-        setExit(ID1,ID2,stubmap[dir1])
+    if stub_map[dir1] <= 12 then
+        setExit(ID1,ID2,stub_map[dir1])
     else
         addSpecialExit(ID1, ID2, dir1)
         setRoomUserData(ID1,"exit " .. dir1,ID2)
         -- check handling of custom exits here
-        setRoomUserData(ID1,"stub "..dir1, stubmap[dir1])
+        setRoomUserData(ID1,"stub "..dir1, stub_map[dir1])
     end
     local doors1, doors2 = getDoors(ID1), getDoors(ID2)
     local dstatus1, dstatus2 = doors1[short[dir1]] or doors1[dir1], doors2[short[dir2]] or doors2[dir2]
@@ -511,73 +508,73 @@ local function connect_rooms(ID1, ID2, dir1)
         end
     end
     if map.mode ~= "complex" then
-        local stubs = getRoomStubs(ID2)
+        local stubs = get_room_stubs(ID2)
         if (stubs[dir2]) then
             -- check handling of custom exits here
-            if stubmap[dir2] <= 12 then
-                setExit(ID2,ID1,stubmap[dir2])
+            if stub_map[dir2] <= 12 then
+                setExit(ID2,ID1,stub_map[dir2])
             else
                 addSpecialExit(ID2, ID1, dir2)
                 setRoomUserData(ID2,"exit " .. dir2,ID1)
                 -- check handling of custom exits here
-                setRoomUserData(ID2,"stub " .. dir2, stubmap[dir2])
+                setRoomUserData(ID2,"stub " .. dir2, stub_map[dir2])
             end
         end
     end
 end
 
-local function reconnectRooms(baseRoomID, disconnectedRoomID)
+local function reconnect_rooms(base_room_id, disconnected_room_id)
     map.echo("Reconnecting rooms...")
-    local baseAreaID = getRoomArea(baseRoomID)
-    local disconnectedAreaID = getRoomArea(disconnectedRoomID)
-    local roomsToProcess = getAreaRooms(disconnectedAreaID)
-    local roomExits = {}
+    local base_area_id = getRoomArea(base_room_id)
+    local disconnected_area_id = getRoomArea(disconnected_room_id)
+    local rooms_to_process = getAreaRooms(disconnected_area_id)
+    local room_exits = {}
 
-    for _, id in pairs(roomsToProcess) do
-        roomExits[id] = getRoomExits(id)
+    for _, id in pairs(rooms_to_process) do
+        room_exits[id] = getRoomExits(id)
     end
-    roomExits[baseRoomID] = getRoomExits(baseRoomID)
+    room_exits[base_room_id] = getRoomExits(base_room_id)
 
     -- Make sure the directions go both ways
-    for id, exits in pairs(roomExits) do
+    for id, exits in pairs(room_exits) do
         for dir, dest in pairs(exits) do
-            if roomExits[dest] then
-                roomExits[dest][reverse_dirs[dir]] = id
+            if room_exits[dest] then
+                room_exits[dest][reverse_dirs[dir]] = id
             end
         end
     end
 
-    local toReconnect = {baseRoomID}
-    local curID
+    local to_reconnect = {base_room_id}
+    local cur_id
     local x, y, z, dx, dy, dz
 
     -- Walk the rooms connected to baseRoomID and change their area.
-    while not table.is_empty(toReconnect) do
-        curID = table.remove(toReconnect)
-        setRoomArea(curID, baseAreaID)
-        x, y, z = getRoomCoordinates(curID)
+    while not table.is_empty(to_reconnect) do
+        cur_id = table.remove(to_reconnect)
+        setRoomArea(cur_id, base_area_id)
+        x, y, z = getRoomCoordinates(cur_id)
         -- Reconnect all its exits
-        for dir, dest in pairs(roomExits[curID]) do
-            if getRoomArea(dest) == disconnectedAreaID then
-                table.insert(toReconnect, dest)
-                dx, dy, dz = unpack(coordmap[stubmap[dir]])
+        for dir, dest in pairs(room_exits[cur_id]) do
+            if getRoomArea(dest) == disconnected_area_id then
+                table.insert(to_reconnect, dest)
+                dx, dy, dz = unpack(coord_map[stub_map[dir]])
                 setRoomCoordinates(dest, x+dx, y+dy, z+dz)
             end
         end
-        roomExits[curID] = nil
+        room_exits[cur_id] = nil
     end
-    if table.is_empty(getAreaRooms(disconnectedAreaID)) then
-        deleteArea(disconnectedAreaID)
+    if table.is_empty(getAreaRooms(disconnected_area_id)) then
+        deleteArea(disconnected_area_id)
     end
 end
 
 local function stretch_map(dir,x,y,z)
     -- stretches a map to make room for just added room that would overlap with existing room
-    local dx,dy,dz
+    local dx, dy, dz
     if not dir then return end
-    for k,v in pairs(getAreaRooms(map.currentRoomAreaID)) do
-        if v ~= map.currentRoomID then
-            dx,dy,dz = getRoomCoordinates(v)
+    for k, v in pairs(getAreaRooms(map.current_room_area_id)) do
+        if v ~= map.current_room_id then
+            dx, dy, dz = getRoomCoordinates(v)
             if dx >= x and string.find(dir,"east") then
                 dx = dx + 1
             elseif dx <= x and string.find(dir,"west") then
@@ -593,7 +590,7 @@ local function stretch_map(dir,x,y,z)
             elseif dz <= z and string.find(dir,"down") then
                 dz = dz - 1
             end
-            setRoomCoordinates(v,dx,dy,dz)
+            setRoomCoordinates(v, dx, dy, dz)
         end
     end
 end
@@ -602,72 +599,71 @@ local function create_room(dir, coords)
     -- makes a new room with captured name and exits
     -- links with other rooms as appropriate
     if map.mapping then
-        map.echo("New Room: " .. map.currentRoomName,false,false,dir and true or false)
+        map.echo("New Room: " .. map.current_room_name,false,false,dir and true or false)
 
-        addRoom(map.currentRoomID)
-        setRoomArea(map.currentRoomID, map.currentRoomAreaID)
-        setRoomName(map.currentRoomID, map.currentRoomName)
-        setRoomCoordinates(map.currentRoomID, unpack(coords))
+        addRoom(map.current_room_id)
+        setRoomArea(map.current_room_id, map.current_room_area_id)
+        setRoomName(map.current_room_id, map.current_room_name)
+        setRoomCoordinates(map.current_room_id, unpack(coords))
 
-        for k, _ in pairs(map.currentRoomExits) do
-            if stubmap[k] then
-                if stubmap[k] <= 12 then
-                    setExitStub(map.currentRoomID, stubmap[k], true)
+        for k, _ in pairs(map.current_room_exits) do
+            if stub_map[k] then
+                if stub_map[k] <= 12 then
+                    setExitStub(map.current_room_id, stub_map[k], true)
                 else
                     -- add special char to prompt special exit
                     if string.find(k, "up") or string.find(k, "down") then
-                        setRoomChar(map.currentRoomID, "◎")
+                        setRoomChar(map.current_room_id, "◎")
                     end
                     -- check handling of custom exits here
-                    setRoomUserData(map.currentRoomID, "stub "..k,stubmap[k])
+                    setRoomUserData(map.current_room_id, "stub "..k,stub_map[k])
                 end
             end
         end
 
-        local pos_rooms = getRoomsByPosition(map.currentRoomAreaID, unpack(coords))
+        local pos_rooms = getRoomsByPosition(map.current_room_area_id, unpack(coords))
         if map.configs.stretch_map and table.size(pos_rooms) > 1 then
             stretch_map(dir,unpack(coords))
         end
     end
 end
 
-local function findAreaID(name)
+local function find_area_id(name)
     -- searches for the named area, and creates it if necessary
     local areas = getAreaTable()
-    local areaID
+    local area_id
     for k,v in pairs(areas) do
         if string.lower(name) == string.lower(k) then
-            areaID = v
+            area_id = v
             break
         end
     end
-    if not areaID then areaID = addAreaName(name) end
-    if not areaID then
+    if not area_id then area_id = addAreaName(name) end
+    if not area_id then
         show_err("Invalid Area. No such area found, and area could not be added.",true)
     end
-    return areaID
+    return area_id
 end
 
 ---------------
 -- Speedwalking
 ---------------
 
-function map.find_path(roomName,areaName)
-    areaName = (areaName ~= "" and areaName) or nil
-    local rooms = find_room(roomName,areaName)
+function map.find_path(roomName,area_name)
+    area_name = (area_name ~= "" and area_name) or nil
+    local rooms = find_room(roomName,area_name)
     local found,dirs = false,{}
-    local path = {}
-    for k,v in pairs(rooms) do
-        found = getPath(map.currentRoomID,k)
+
+    for k, _ in pairs(rooms) do
+        found = getPath(map.current_room_id,k)
         if found and (#dirs == 0 or #dirs > #speedWalkDir) then
             dirs = speedWalkDir
-            path = speedWalkPath
         end
     end
     if #dirs > 0 then
-        map.echo("Path to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ": " .. table.concat(dirs,", "))
+        map.echo("Path to " .. roomName .. ((area_name and " in " .. area_name) or "") .. ": " .. table.concat(dirs,", "))
     else
-        map.echo("No path found to " .. roomName .. ((areaName and " in " .. areaName) or "") .. ".",false,true)
+        map.echo("No path found to " .. roomName .. ((area_name and " in " .. area_name) or "") .. ".",false,true)
     end
 end
 
@@ -685,9 +681,9 @@ continue_walk = function(new_room)
     end
     -- send command if we don't need to wait
     if not new_room then
-        send(table.remove(map.walkDirs,1))
+        send(table.remove(map.walk_dirs,1))
         -- check to see if we are done
-        if #map.walkDirs == 0 then
+        if #map.walk_dirs == 0 then
             walking = false
             speedWalkPath, speedWalkWeight = {}, {}
             raiseEvent("sysSpeedwalkFinished")
@@ -700,51 +696,51 @@ continue_walk = function(new_room)
     end
 end
 
-function map.speedwalk(roomID, walkPath, walkDirs)
-    roomID = roomID or speedWalkPath[#speedWalkPath]
-    getPath(map.currentRoomID, roomID)
-    walkPath = speedWalkPath
-    walkDirs = speedWalkDir
+function map.speed_walk(room_id, walk_path, walk_dirs)
+    room_id = room_id or speedWalkPath[#speedWalkPath]
+    getPath(map.current_room_id, room_id)
+    walk_path = speedWalkPath
+    walk_dirs = speedWalkDir
     if #speedWalkPath == 0 then
-        map.echo("No path to chosen room found.",false,true)
+        map.echo("No path to chosen room found.", false, true)
         return
     end
-    table.insert(walkPath, 1, map.currentRoomID)
+    table.insert(walk_path, 1, map.current_room_id)
     -- go through dirs to find doors that need opened, etc
     -- add in necessary extra commands to walkDirs table
     local k = 1
     repeat
-        local id, dir = walkPath[k], walkDirs[k]
-        if exitmap[dir] or short[dir] then
-            local door = check_doors(id, exitmap[dir] or dir)
+        local id, dir = walk_path[k], walk_dirs[k]
+        if exit_map[dir] or short[dir] then
+            local door = check_doors(id, exit_map[dir] or dir)
             local status = door and door[dir]
             if status and status > 1 then
                 -- if locked, unlock door
                 if status == 3 then
-                    table.insert(walkPath,k,id)
-                    table.insert(walkDirs,k,"unlock " .. (exitmap[dir] or dir))
+                    table.insert(walk_path, k, id)
+                    table.insert(walk_dirs, k, "unlock " .. (exit_map[dir] or dir))
                     k = k + 1
                 end
                 -- if closed, open door
-                table.insert(walkPath,k,id)
-                table.insert(walkDirs,k,"open " .. (exitmap[dir] or dir))
+                table.insert(walk_path, k, id)
+                table.insert(walk_dirs, k, "open " .. (exit_map[dir] or dir))
                 k = k + 1
             end
         end
         k = k + 1
-    until k > #walkDirs
+    until k > #walk_dirs
     if map.configs.use_translation then
-        for k, v in ipairs(walkDirs) do
-            walkDirs[k] = map.configs.lang_dirs[v] or v
+        for k, v in ipairs(walk_dirs) do
+            walk_dirs[k] = map.configs.lang_dirs[v] or v
         end
     end
     -- perform walk
     walking = true
     if map.configs.speedwalk_wait or map.configs.speedwalk_delay > 0 then
-        map.walkDirs = walkDirs
+        map.walk_dirs = walk_dirs
         continue_walk()
     else
-        for _,dir in ipairs(walkDirs) do
+        for _,dir in ipairs(walk_dirs) do
             send(dir)
         end
         walking = false
@@ -755,13 +751,13 @@ end
 function doSpeedWalk()
     if #speedWalkPath ~= 0 then
         raiseEvent("sysSpeedwalkStarted")
-        map.speedwalk(nil, speedWalkPath, speedWalkDir)
+        map.speed_walk(nil, speedWalkPath, speedWalkDir)
     else
         map.echo("No path to chosen room found.",false,true)
     end
 end
 
-function map.pauseSpeedwalk()
+function map.pause_speed_walk()
     if #speedWalkDir ~= 0 then
         walking = false
         raiseEvent("sysSpeedwalkPaused")
@@ -771,21 +767,21 @@ function map.pauseSpeedwalk()
     end
 end
 
-function map.resumeSpeedwalk(delay)
+function map.resume_speed_walk(delay)
     if #speedWalkDir ~= 0 then
-        centerview(map.currentRoomID)
+        centerview(map.current_room_id)
         raiseEvent("sysSpeedwalkResumed")
         map.echo("Speedwalking resumed.")
-        tempTimer(delay or 0, function() map.speedwalk(nil, speedWalkPath, speedWalkDir) end)
+        tempTimer(delay or 0, function() map.speed_walk(nil, speedWalkPath, speedWalkDir) end)
     else
         map.echo("Not currently speedwalking.")
     end
 end
 
-function map.stopSpeedwalk()
+function map.stop_speed_walk()
     if #speedWalkDir ~= 0 then
         walking = false
-        map.walkDirs, speedWalkDir, speedWalkPath, speedWalkWeight = {}, {}, {}, {}
+        map.walk_dirs, speedWalkDir, speedWalkPath, speedWalkWeight = {}, {}, {}, {}
         raiseEvent("sysSpeedwalkStopped")
         map.echo("Speedwalking stopped.")
     else
@@ -793,13 +789,13 @@ function map.stopSpeedwalk()
     end
 end
 
-function map.toggleSpeedwalk(what)
+function map.toggle_speed_walk(what)
     assert(what == nil or what == "on" or what == "off", "map.toggleSpeedwalk wants 'on', 'off' or nothing as an argument")
 
     if what == "on" or (what == nil and walking) then
-        map.pauseSpeedwalk()
+        map.pause_speed_walk()
     elseif what == "off" or (what == nil and not walking) then
-        map.resumeSpeedwalk()
+        map.resume_speed_walk()
     end
 end
 
@@ -855,33 +851,33 @@ end
 ---------------
 -- Map Commands
 ---------------
-function map.set_exit(dir,roomID)
+function map.set_exit(dir,room_id)
     -- used to set unusual exits from the room you are standing in
     if map.mapping then
-        roomID = tonumber(roomID)
-        if not roomID then
+        room_id = tonumber(room_id)
+        if not room_id then
             show_err("Set Exit: Invalid Room ID")
         end
-        if not table.contains(exitmap,dir) and not string.starts(dir, "-p ") then
+        if not table.contains(exit_map, dir) and not string.starts(dir, "-p ") then
             show_err("Set Exit: Invalid Direction")
         end
 
         if not string.starts(dir, "-p ") then
             local exit
-            if stubmap[exitmap[dir] or dir] <= 12 then
-                exit = short[exitmap[dir] or dir]
-                setExit(map.currentRoomID,roomID,exit)
+            if stub_map[exit_map[dir] or dir] <= 12 then
+                exit = short[exit_map[dir] or dir]
+                setExit(map.current_room_id, room_id, exit)
             else
                 -- check handling of custom exits here
-                exit = exitmap[dir] or dir
+                exit = exit_map[dir] or dir
                 exit = "exit " .. exit
-                setRoomUserData(map.currentRoomID,exit,roomID)
+                setRoomUserData(map.current_room_id, exit, room_id)
             end
-            map.echo("Exit " .. dir .. " now goes to roomID " .. roomID)
+            map.echo("Exit " .. dir .. " now goes to roomID " .. room_id)
         else
-            dir = string.gsub(dir,"^-p ","")
-            addSpecialExit(map.currentRoomID,roomID,dir)
-            map.echo("Special exit '" .. dir .. "' now goes to roomID " .. roomID)
+            dir = string.gsub(dir, "^-p ", "")
+            addSpecialExit(map.current_room_id, room_id, dir)
+            map.echo("Special exit '" .. dir .. "' now goes to roomID " .. room_id)
         end
     else
         map.echo("Not mapping",false,true)
@@ -892,11 +888,11 @@ function map.set_portal(command)
     -- creates a new portal going from the last room to the current one
     if map.mapping then
         map.echo("Adding portal destination, linking rooms")
-        addSpecialExit(map.prevRoomID, map.currentRoomID, command)
-        local portals = getRoomUserData(map.currentRoomID, "portals") or ""
-        portals = portals .. "," .. tostring(map.prevRoomID)..":"..command
-        setRoomUserData(map.currentRoomID,"portals",portals)
-        centerview(map.currentRoomID)
+        addSpecialExit(map.prev_room_id, map.current_room_id, command)
+        local portals = getRoomUserData(map.current_room_id, "portals") or ""
+        portals = portals .. "," .. tostring(map.prev_room_id)..":"..command
+        setRoomUserData(map.current_room_id,"portals",portals)
+        centerview(map.current_room_id)
     else
         map.echo("Not mapping",false,true)
     end
@@ -906,15 +902,15 @@ function map.fix_portals()
     -- used to clear and update data for portal back-referencing
     local rooms = getRooms()
     local portals
-    for k,v in pairs(rooms) do
-        setRoomUserData(k,"portals","")
+    for k, _ in pairs(rooms) do
+        setRoomUserData(k, "portals", "")
     end
-    for k,v in pairs(rooms) do
-        for cmd,room in pairs(getSpecialExitsSwap(k)) do
-            portals = getRoomUserData(room,"portals") or ""
+    for k, _ in pairs(rooms) do
+        for cmd, room in pairs(getSpecialExitsSwap(k)) do
+            portals = getRoomUserData(room, "portals") or ""
             if portals ~= "" then portals = portals .. "," end
             portals = portals .. tostring(k) .. ":" .. cmd
-            setRoomUserData(room,"portals",portals)
+            setRoomUserData(room, "portals", portals)
         end
     end
     map.echo("Portals Fixed")
@@ -931,31 +927,32 @@ end
 
 function map.start_mapping()
     -- starts mapping, and sets the current area to the given one, or uses the current one
-    if not map.currentRoomID then
+    if not map.current_room_id then
         show_err("Room detection not yet working, try looking or moving.")
         return
     end
 
     map.set("mapping", true)
-    if not roomExists(map.currentRoomID) then
-        local areaID = findAreaID(string.trim(gmcp.room.info.area))
-        if table.is_empty(getAreaRooms(areaID)) then
+    if not roomExists(map.current_room_id) then
+        local gmcp_area = string.trim(gmcp.room.info.area)
+        local area_id = find_area_id(gmcp_area)
+        if table.is_empty(getAreaRooms(area_id)) then
             -- New area
-            map.set("currentRoomAreaID", areaID)
-            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the new area ".. gmcp.room.info.area)
+            map.set("current_room_area_id", area_id)
+            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the new area ".. gmcp.room.info.area)
         else
             -- Area already exists, start in a sub-area
-            local subAreaName = f"{gmcpArea}/{map.currentRoomName}({map.currentRoomID})"
-            map.set("currentRoomAreaID", findAreaID(subAreaName))
-            map.set("disconnectedArea", true)
-            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+            local sub_area_name = f"{gmcp_area}/{map.current_room_name}({map.current_room_id})"
+            map.set("current_room_area_id", find_area_id(sub_area_name))
+            map.set("disconnected_area", true)
+            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. sub_area_name)
         end
         create_room(nil, {0,0,0})
     else
-        map.set("currentRoomAreaID", getRoomArea(map.currentRoomID))
-        map.set("disconnectedArea", getRoomAreaName(map.currentRoomAreaID) ~= gmcp.room.info.area)
+        map.set("current_room_area_id", getRoomArea(map.current_room_id))
+        map.set("disconnected_area", getRoomAreaName(map.current_room_area_id) ~= gmcp.room.info.area)
     end
-    centerview(map.currentRoomID)
+    centerview(map.current_room_id)
 end
 
 function map.stop_mapping()
@@ -966,78 +963,78 @@ end
 function map.set_area(name)
     -- assigns the current room to the area given, creates the area if necessary
     if map.mapping then
-        local areaID = findAreaID(name)
-        if map.currentRoomID and getRoomArea(map.currentRoomID) ~= areaID then
-            setRoomArea(map.currentRoomID, areaID)
-            map.set("currentRoomAreaID", areaID)
-            map.echo(f"Moved {map.currentRoomName} to {getRoomAreaName(map.currentRoomAreaID)}")
-            centerview(map.currentRoomID)
+        local area_id = find_area_id(name)
+        if map.current_room_id and getRoomArea(map.current_room_id) ~= area_id then
+            setRoomArea(map.current_room_id, area_id)
+            map.set("current_room_area_id", area_id)
+            map.echo(f"Moved {map.current_room_name} to {get_room_area_name(map.current_room_area_id)}")
+            centerview(map.current_room_id)
         end
     else
         map.echo("Not mapping",false,true)
     end
 end
 
-function map.set_door(dir,status,one_way)
+function map.set_door(dir, status, one_way)
     -- adds a door on a given exit
     if map.mapping then
-        if not map.currentRoomID then
+        if not map.current_room_id then
             show_err("Make Door: No room found.")
         end
-        dir = exitmap[dir] or dir
-        if not stubmap[dir] then
+        dir = exit_map[dir] or dir
+        if not stub_map[dir] then
             show_err("Make Door: Invalid direction.")
         end
         status = (status ~= "" and status) or "closed"
         one_way = (one_way ~= "" and one_way) or "no"
-        if not table.contains({"yes","no"},one_way) then
+        if not table.contains({"yes","no"}, one_way) then
             show_err("Make Door: Invalid one-way status, must be yes or no.")
         end
 
-        local exits = getRoomExits(map.currentRoomID)
+        local exits = getRoomExits(map.current_room_id)
         local exit
         -- check handling of custom exits here
-        for i = 13,#stubmap do
-            exit = "exit " .. stubmap[i]
-            exits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoomID,exit))
+        for i = 13,#stub_map do
+            exit = "exit " .. stub_map[i]
+            exits[stub_map[i]] = tonumber(getRoomUserData(map.current_room_id, exit))
         end
         local target_room = exits[dir]
         if target_room then
             exits = getRoomExits(target_room)
             -- check handling of custom exits here
-            for i = 13,#stubmap do
-                exit = "exit " .. stubmap[i]
-                exits[stubmap[i]] = tonumber(getRoomUserData(target_room,exit))
+            for i = 13,#stub_map do
+                exit = "exit " .. stub_map[i]
+                exits[stub_map[i]] = tonumber(getRoomUserData(target_room, exit))
             end
         end
-        if one_way == "no" and (target_room and exits[reverse_dirs[dir]] == map.currentRoomID) then
+        if one_way == "no" and (target_room and exits[reverse_dirs[dir]] == map.current_room_id) then
             add_door(target_room,reverse_dirs[dir],status)
         end
-        add_door(map.currentRoomID,dir,status)
+        add_door(map.current_room_id, dir, status)
         map.echo(string.format("Adding %s door to the %s", status, dir))
     else
-        map.echo("Not mapping",false,true)
+        map.echo("Not mapping", false, true)
     end
 end
 
 function map.shift_room(dir)
     -- shifts a room around on the map
     if map.mapping then
-        dir = exitmap[dir] or (table.contains(exitmap,dir) and dir)
+        dir = exit_map[dir] or (table.contains(exit_map,dir) and dir)
         if not dir then
             show_err("Shift Room: Exit not found")
         end
-        local x,y,z = getRoomCoordinates(map.currentRoomID)
-        dir = stubmap[dir]
-        local coords = coordmap[dir]
+        local x, y, z = getRoomCoordinates(map.current_room_id)
+        dir = stub_map[dir]
+        local coords = coord_map[dir]
         x = x + coords[1]
         y = y + coords[2]
         z = z + coords[3]
-        setRoomCoordinates(map.currentRoomID,x,y,z)
-        centerview(map.currentRoomID)
-        map.echo("Shifting room",true)
+        setRoomCoordinates(map.current_room_id, x, y, z)
+        centerview(map.current_room_id)
+        map.echo("Shifting room", true)
     else
-        map.echo("Not mapping",false,true)
+        map.echo("Not mapping", false, true)
     end
 end
 
@@ -1046,53 +1043,53 @@ function map.merge_rooms()
     -- typically, these are generated due to mapping errors
     if map.mapping then
         map.echo("Merging rooms")
-        local x,y,z = getRoomCoordinates(map.currentRoomID)
-        local rooms = getRoomsByPosition(map.currentRoomAreaID,x,y,z)
-        local exits, portals, room, cmd, curportals
+        local x, y, z = getRoomCoordinates(map.current_room_id)
+        local rooms = getRoomsByPosition(map.current_room_area_id, x, y, z)
+        local exits, portals, room, cmd, cur_portals
         local room_count = 1
         for k,v in pairs(rooms) do
-            if v ~= map.currentRoomID then
-                if getRoomName(v) == getRoomName(map.currentRoomID) then
+            if v ~= map.current_room_id then
+                if getRoomName(v) == getRoomName(map.current_room_id) then
                     room_count = room_count + 1
                     for k1,v1 in pairs(getRoomExits(v)) do
-                        setExit(map.currentRoomID,v1,stubmap[k1])
+                        setExit(map.current_room_id, v1, stub_map[k1])
                         exits = getRoomExits(v1)
                         if exits[reverse_dirs[k1]] == v then
-                            setExit(v1,map.currentRoomID,stubmap[reverse_dirs[k1]])
+                            setExit(v1, map.current_room_id, stub_map[reverse_dirs[k1]])
                         end
                     end
-                    for k1,v1 in pairs(getDoors(v)) do
-                        setDoor(map.currentRoomID,k1,v1)
+                    for k1, v1 in pairs(getDoors(v)) do
+                        setDoor(map.current_room_id, k1, v1)
                     end
-                    for k1,v1 in pairs(getSpecialExitsSwap(v)) do
-                        addSpecialExit(map.currentRoomID,v1,k1)
+                    for k1, v1 in pairs(getSpecialExitsSwap(v)) do
+                        addSpecialExit(map.current_room_id, v1, k1)
                     end
-                    portals = getRoomUserData(v,"portals") or ""
+                    portals = getRoomUserData(v, "portals") or ""
                     if portals ~= "" then
-                        portals = string.split(portals,",")
-                        for k1,v1 in ipairs(portals) do
+                        portals = string.split(portals, ",")
+                        for _,v1 in ipairs(portals) do
                             room,cmd = unpack(string.split(v1,":"))
-                            addSpecialExit(tonumber(room),map.currentRoomID,cmd)
-                            curportals = getRoomUserData(map.currentRoomID,"portals") or ""
-                            if not string.find(curportals,room) then
-                                curportals = curportals .. "," .. room .. ":" .. cmd
-                                setRoomUserData(map.currentRoomID,"portals",curportals)
+                            addSpecialExit(tonumber(room), map.current_room_id, cmd)
+                            cur_portals = getRoomUserData(map.current_room_id, "portals") or ""
+                            if not string.find(cur_portals, room) then
+                                cur_portals = cur_portals .. "," .. room .. ":" .. cmd
+                                setRoomUserData(map.current_room_id, "portals", cur_portals)
                             end
                         end
                     end
                     -- check handling of custom exits here for doors and exits, and reverse exits
-                    for i = 13,#stubmap do
-                        local door = "door " .. stubmap[i]
-                        local tmp = tonumber(getRoomUserData(v,door))
+                    for i = 13,#stub_map do
+                        local door = "door " .. stub_map[i]
+                        local tmp = tonumber(getRoomUserData(v, door))
                         if tmp then
-                            setRoomUserData(map.currentRoomID,door,tmp)
+                            setRoomUserData(map.current_room_id, door, tmp)
                         end
-                        local exit = "exit " .. stubmap[i]
-                        tmp = tonumber(getRoomUserData(v,exit))
+                        local exit = "exit " .. stub_map[i]
+                        tmp = tonumber(getRoomUserData(v, exit))
                         if tmp then
-                            setRoomUserData(map.currentRoomID,exit,tmp)
-                            if tonumber(getRoomUserData(tmp, "exit " .. reverse_dirs[stubmap[i]])) == v then
-                                setRoomUserData(tmp, exit, map.currentRoomID)
+                            setRoomUserData(map.current_room_id, exit, tmp)
+                            if tonumber(getRoomUserData(tmp, "exit " .. reverse_dirs[stub_map[i]])) == v then
+                                setRoomUserData(tmp, exit, map.current_room_id)
                             end
                         end
                     end
@@ -1104,16 +1101,16 @@ function map.merge_rooms()
             map.echo(room_count .. " rooms merged", true)
         end
     else
-        map.echo("Not mapping",false,true)
+        map.echo("Not mapping", false, true)
     end
 end
 
-function map.showMap(shown)
+function map.show_map(shown)
     local configs = map.configs.map_window
     shown = shown or not configs.shown
     map.configs.map_window.shown = shown
     local x, y, w, h, origin = configs.x, configs.y, configs.w, configs.h, configs.origin
-    if string.find(origin,"bottom") then
+    if string.find(origin, "bottom") then
         if y == 0 or y == "0%" then
             y = h
         end
@@ -1123,7 +1120,7 @@ function map.showMap(shown)
             y = "-"..y
         end
     end
-    if string.find(origin,"right") then
+    if string.find(origin, "right") then
         if x == 0 or x == "0%" then
             x = w
         end
@@ -1134,8 +1131,8 @@ function map.showMap(shown)
         end
     end
     local mapper = Geyser.Mapper:new({name = "my_mapper", x = x, y = y, w = w, h = h})
-    mapper:resize(w,h)
-    mapper:move(x,y)
+    mapper:resize(w, h)
+    mapper:move(x, y)
     if shown then
         mapper:show()
     else
@@ -1147,7 +1144,7 @@ function map.export_area(name)
     -- used to export a single area to a file
     local areas = getAreaTable()
     name = string.lower(name)
-    for k,v in pairs(areas) do
+    for k, _ in pairs(areas) do
         if name == string.lower(k) then name = k end
     end
     if not areas[name] then
@@ -1155,7 +1152,7 @@ function map.export_area(name)
     end
     local rooms = getAreaRooms(areas[name])
     local tmp = {}
-    for k,v in pairs(rooms) do
+    for _, v in pairs(rooms) do
         tmp[v] = v
     end
     rooms = tmp
@@ -1164,20 +1161,21 @@ function map.export_area(name)
     tbl.rooms = {}
     tbl.exits = {}
     tbl.special = {}
-    local rname, exits, stubs, doors, special, portals, door_up, door_down, coords
-    for k,v in pairs(rooms) do
+    local rname, exits, stubs, doors, special, portals, door_up, door_down
+    local door_in, door_out, coords, id
+    for _, v in pairs(rooms) do
         rname = getRoomName(v)
         exits = getRoomExits(v)
         stubs = getExitStubs(v)
         doors = getDoors(v)
         special = getSpecialExitsSwap(v)
-        portals = getRoomUserData(v,"portals") or ""
+        portals = getRoomUserData(v, "portals") or ""
         coords = {getRoomCoordinates(v)}
-        tbl.rooms[v] = {name = rname, coords = coords, exits = exits, stubs = stubs, doors = doors, door_up = door_up,
+        tbl.rooms[v] = {id = v, name = rname, coords = coords, exits = exits, stubs = stubs, doors = doors, door_up = door_up,
             door_down = door_down, door_in = door_in, door_out = door_out, special = special, portals = portals}
         tmp = {}
-        for k1,v1 in pairs(exits) do
-            if not table.contains(rooms,v1) then
+        for k1, v1 in pairs(exits) do
+            if not table.contains(rooms, v1) then
                 tmp[k1] = {v1, getRoomName(v1)}
             end
         end
@@ -1185,8 +1183,8 @@ function map.export_area(name)
             tbl.exits[v] = tmp
         end
         tmp = {}
-        for k1,v1 in pairs(special) do
-            if not table.contains(rooms,v1) then
+        for k1, v1 in pairs(special) do
+            if not table.contains(rooms, v1) then
                 tmp[k1] = {v1, getRoomName(v1)}
             end
         end
@@ -1194,61 +1192,61 @@ function map.export_area(name)
             tbl.special[v] = tmp
         end
     end
-    local path = profilePath.."/"..string.gsub(string.lower(name),"%s","_")..".dat"
-    table.save(path,tbl)
+    local path = profile_path .. "/" .. string.gsub(string.lower(name), "%s", "_") .. ".dat"
+    table.save(path, tbl)
     map.echo("Area " .. name .. " exported to " .. path)
 end
 
 function map.import_area(name)
-    name = profilePath .. "/" .. string.gsub(string.lower(name),"%s","_") .. ".dat"
+    local file_name = profile_path .. "/" .. string.gsub(string.lower(name), "%s", "_") .. ".dat"
     local tbl = {}
-    table.load(name,tbl)
+    table.load(file_name,tbl)
     if table.is_empty(tbl) then
         show_err("No file found")
     end
     local areas = getAreaTable()
-    local areaID = areas[tbl.name] or addAreaName(tbl.name)
+    local area_id = areas[tbl.name] or addAreaName(tbl.name)
     local rooms = {}
-    local ID
-    for k,v in pairs(tbl.rooms) do
-        ID = createRoomID()
-        rooms[k] = ID
-        addRoom(ID)
-        setRoomName(ID,v.name)
-        setRoomArea(ID,areaID)
-        setRoomCoordinates(ID,unpack(v.coords))
+    local id
+    for k, v in pairs(tbl.rooms) do
+        id = v.id
+        rooms[k] = id
+        addRoom(id)
+        setRoomName(id, v.name)
+        setRoomArea(id, area_id)
+        setRoomCoordinates(id, unpack(v.coords))
         if type(v.stubs) == "table" then
-            for i,j in pairs(v.stubs) do
-                setExitStub(ID,j,true)
+            for _, j in pairs(v.stubs) do
+                setExitStub(id, j, true)
             end
         end
         for i,j in pairs(v.doors) do
-            setDoor(ID,i,j)
+            setDoor(id,i,j)
         end
-        setRoomUserData(ID,"portals",v.portals)
+        setRoomUserData(id,"portals",v.portals)
     end
     for k,v in pairs(tbl.rooms) do
         for i,j in pairs(v.exits) do
             if rooms[j] then
-                connect_rooms(rooms[k],rooms[j],i)
+                connect_rooms(rooms[k], rooms[j], i)
             end
         end
         for i,j in pairs(v.special) do
             if rooms[j] then
-                addSpecialExit(rooms[k],rooms[j],i)
+                addSpecialExit(rooms[k], rooms[j], i)
             end
         end
     end
     for k,v in pairs(tbl.exits) do
         for i,j in pairs(v) do
             if getRoomName(j[1]) == j[2] then
-                connect_rooms(rooms[k],j[1],i)
+                connect_rooms(rooms[k], j[1], i)
             end
         end
     end
     for k,v in pairs(tbl.special) do
         for i,j in pairs(v) do
-            addSpecialExit(k,j[1],i)
+            addSpecialExit(k, j[1], i)
         end
     end
     map.fix_portals()
@@ -1259,9 +1257,9 @@ end
 -- Mapping Events
 -----------------
 
-map.registeredEvents = {
+map.registered_events = {
     registerAnonymousEventHandler("gmcp.room.info", "map.eventHandler"),
-    registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
+    --registerAnonymousEventHandler("sysDataSendRequest", "map.eventHandler"),
     registerAnonymousEventHandler("sysDownloadDone", "map.eventHandler"),
     --registerAnonymousEventHandler("sysDownloadError", "map.eventHandler"),
     registerAnonymousEventHandler("sysLoadEvent", "map.eventHandler"),
@@ -1275,47 +1273,47 @@ function map.eventHandler(event, ...)
     if event == "gmcp.room.info" then
         display(gmcp.room.info)
 
-        local roomID = tonumber(gmcp.room.info.num)
-        if roomID == map.currentRoomID and #map.currentRoomExits == #gmcp.room.info.exits then
+        local room_id = tonumber(gmcp.room.info.num)
+        if room_id == map.current_room_id and #map.current_room_exits == #gmcp.room.info.exits then
             map.echo("Room hasn't changed.", true)
             return
         end
-        local roomExists = roomExists(roomID)
+        local roomExists = roomExists(room_id)
 
         -- save current info as previous' room info
-        map.set("prevRoomID", map.currentRoomID)
-        map.set("prevRoomName", map.currentRoomName)
-        map.set("prevRoomExits", map.currentRoomExits)
-        map.set("prevRoomAreaID", map.currentRoomAreaID)
+        map.set("prev_room_id", map.current_room_id)
+        map.set("prev_room_rame", map.current_room_name)
+        map.set("prev_room_exits", map.current_room_exits)
+        map.set("prev_room_area_id", map.current_room_area_id)
 
         -- populate current room's info
-        map.set("currentRoomID", roomID)
+        map.set("current_room_id", room_id)
 
         local parsed_exits = {}
         for k, v in pairs(gmcp.room.info.exits) do
-            k = exitmap[k] or k  -- The script assumes that directions are longform
+            k = exit_map[k] or k  -- The script assumes that directions are longform
             parsed_exits[k] = tonumber(v)
         end
-        table.update(parsed_exits, getRoomExits(map.currentRoomID) or {})  -- Adds already mapped exits.
-        map.set("currentRoomExits", parsed_exits)
+        table.update(parsed_exits, getRoomExits(map.current_room_id) or {})  -- Adds already mapped exits.
+        map.set("current_room_exits", parsed_exits)
 
         if roomExists then
-            map.set("currentRoomName", getRoomName(map.currentRoomID))
+            map.set("current_room_name", getRoomName(map.current_room_id))
             -- check handling of custom exits here
-            for i = 13,#stubmap do
-                map.currentRoomExits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoomID,"exit " .. stubmap[i]))
+            for i = 13,#stub_map do
+                map.current_room_exits[stub_map[i]] = tonumber(getRoomUserData(map.current_room_id,"exit " .. stub_map[i]))
             end
         else
-            map.set("currentRoomName", string.trim(gmcp.room.info.name))
+            map.set("current_room_name", string.trim(gmcp.room.info.name))
         end
 
         if map.mapping then
             -- find the connection direction
             local dir, unconnected_dir
-            if map.prevRoomID then 
-                for k, v in pairs(map.prevRoomExits) do
-                    if v == map.currentRoomID then
-                        if stubmap[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
+            if map.prev_room_id then 
+                for k, v in pairs(map.prev_room_exits) do
+                    if v == map.current_room_id then
+                        if stub_map[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
                             dir = k
                             break
                         else
@@ -1327,78 +1325,78 @@ function map.eventHandler(event, ...)
                 
             if not roomExists then
                 -- Need to create room
-                local gmcpArea = string.trim(gmcp.room.info.area)
-                local prevAreaName = map.prevRoomAreaID and getRoomAreaName(map.prevRoomAreaID) or ""
+                local gmcp_area = string.trim(gmcp.room.info.area)
+                local prev_area_name = map.prev_room_area_id and getRoomAreaName(map.prev_room_area_id) or ""
 
                 if dir then
                     -- Can share the same [sub]area as the previous room
-                    if string.starts(prevAreaName, gmcpArea) then
+                    if string.starts(prev_area_name, gmcp_area) then
                         -- Have not changed base area
-                        map.set("currentRoomAreaID", map.prevRoomAreaID)
+                        map.set("current_room_area_id", map.prev_room_area_id)
                     else
-                        map.set("currentRoomAreaID", findAreaID(gmcpArea))
+                        map.set("current_room_area_id", find_area_id(gmcp_area))
                     end
-                    local x,y,z = getRoomCoordinates(map.prevRoomID)
-                    local dx,dy,dz = unpack(coordmap[stubmap[dir]])
-                    display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] from "..dir.." "..
-                            tostring(map.prevRoomID) .. " in area " .. getRoomAreaName(map.currentRoomAreaID))
+                    local x,y,z = getRoomCoordinates(map.prev_room_id)
+                    local dx,dy,dz = unpack(coord_map[stub_map[dir]])
+                    display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..dir.." "..
+                            tostring(map.prev_room_id) .. " in area " .. getRoomAreaName(map.current_room_area_id))
                     create_room(dir, {x+dx,y+dy,z+dz})
                 else
                     -- Can't share same area
                     local udir = unconnected_dir and f"[{unconnected_dir}]" or ""
-                    if string.starts(prevAreaName, gmcpArea) then
+                    if string.starts(prev_area_name, gmcp_area) then
                         -- Have not changed base area
-                        map.set("disconnectedArea", true)
-                        local subAreaName = f"{prevAreaName}/{map.prevRoomName}({map.prevRoomID}){udir}"
-                        map.set("currentRoomAreaID", findAreaID(subAreaName))
-                        display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+                        map.set("disconnected_area", true)
+                        local subAreaName = f"{prev_area_name}/{map.prev_room_name}({map.prev_room_id}){udir}"
+                        map.set("current_room_area_id", find_area_id(subAreaName))
+                        display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName)
                     else
                         -- Need to change area anyway
-                        local areaID = findAreaID(gmcpArea)
-                        if table.is_empty(getAreaRooms(areaID)) then
-                            map.set("currentRoomAreaID", areaID)
+                        local area_id = find_area_id(gmcp_area)
+                        if table.is_empty(getAreaRooms(area_id)) then
+                            map.set("current_room_area_id", area_id)
                         else
                             -- Need to create a subarea of the other area
-                            map.set("disconnectedArea", true)
-                            local subAreaName = f"{gmcpArea}/{map.prevRoomName or map.currentRoomName}({map.prevRoomID or map.currentRoomID}){udir}"
-                            map.set("currentRoomAreaID", findAreaID(subAreaName))
-                            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+                            map.set("disconnected_area", true)
+                            local subAreaName = f"{gmcp_area}/{map.prev_room_name or map.current_room_name}({map.prev_room_id or map.current_room_id}){udir}"
+                            map.set("current_room_area_id", find_area_id(subAreaName))
+                            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName)
                         end
                     end
                     if not unconnected_dir then
                         -- Notify the player of the break and offer to make a portal
-                        map.echo("This room doesn't connect to the precedent through a cardinal exit or a recognized special direction.")
-                        map.echo("To enable speedwalking through that exit, please `add portal <entry command>`.")
-                        map.echo("This will link the previous room to this one using the command.")
+                        map.echo([[This room doesn't connect to the precedent through a cardinal exit or a recognized special direction.
+                                    To enable speedwalking through that exit, please `add portal <entry command>`.
+                                    This will link the previous room to this one using the command.]])
                     end
                     create_room(nil, {0,0,0})
                 end
             else
-                map.set("currentRoomAreaID", getRoomArea(map.currentRoomID))
-                local areaName = getRoomAreaName(map.currentRoomAreaID)
+                map.set("current_room_area_id", getRoomArea(map.current_room_id))
+                local areaName = getRoomAreaName(map.current_room_area_id)
                 if areaName == gmcp.room.info.area then
-                    if map.disconnectedArea and dir then
+                    if map.disconnected_area and dir then
                         -- Enters a base area from a disconnected area. Reconnect
                         display("Reconnecting area...")
-                        reconnectRooms(map.currentRoomID, map.prevRoomID)
+                        reconnect_rooms(map.current_room_id, map.prev_room_id)
                     end
-                    map.set("disconnectedArea", false)
+                    map.set("disconnected_area", false)
                 else
-                    if not map.disconnectedArea and dir then
+                    if not map.disconnected_area and dir then
                         -- Enters a disconnected area from a base area. Reconnect
-                        reconnectRooms(map.prevRoomID, map.currentRoomID)
-                        map.set("disconnectedArea", false)
+                        reconnect_rooms(map.prev_room_id, map.current_room_id)
+                        map.set("disconnected_area", false)
                     else
                         -- If one enters the disconnected area from a non-card dir.
-                        map.set("disconnectedArea", true)
+                        map.set("disconnected_area", true)
                     end
                 end
             end
 
             if dir or unconnected_dir then
-                connect_rooms(map.prevRoomID, map.currentRoomID, dir or unconnected_dir)
+                connect_rooms(map.prev_room_id, map.current_room_id, dir or unconnected_dir)
             end
-            centerview(map.currentRoomID)
+            centerview(map.current_room_id)
         end
         if walking and map.configs.speedwalk_wait then
             continue_walk(true)
@@ -1447,8 +1445,8 @@ function map.eventHandler(event, ...)
     elseif event == "sysManualLocationSetEvent" then
         -- TODO: Add the loading of old info before centerview (prevRoom)
         centerview(arg[1])
-    elseif event == "sysUninstallPackage" and not map.updatingMapper and arg[1] == "generic_mapper" then
-        for _,id in ipairs(map.registeredEvents) do
+    elseif event == "sysUninstallPackage" and not map.updating_mapper and arg[1] == "gmcp_generic_mapper" then
+        for _,id in ipairs(map.registered_events) do
             killAnonymousEventHandler(id)
         end
     end
