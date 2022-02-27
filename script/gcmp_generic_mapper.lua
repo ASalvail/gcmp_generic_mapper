@@ -147,7 +147,7 @@ local function config()
 
     -- setup metatable to store sensitive values
     local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomAreaID",
-        "prevRoomID", "prevRoomName", "prevRoomExits", "prevRoomAreaID", "mode", "version", "unconnected_area"}
+        "prevRoomID", "prevRoomName", "prevRoomExits", "prevRoomAreaID", "mode", "version", "disconnectedArea"}
     mt = getmetatable(map) or {}
     mt.__index = mt
     mt.__newindex = function(tbl, key, value)
@@ -475,7 +475,6 @@ end
 
 local function connect_rooms(ID1, ID2, dir1)
     -- makes a connection between rooms
-    local match = false
     local dir2 = reverse_dirs[dir1]
     -- check handling of custom exits here
     if stubmap[dir1] <= 12 then
@@ -497,8 +496,7 @@ local function connect_rooms(ID1, ID2, dir1)
     end
     if map.mode ~= "complex" then
         local stubs = getRoomStubs(ID2)
-        if stubs[dir2] then match = true end
-        if (match) then
+        if (stubs[dir2]) then
             -- check handling of custom exits here
             if stubmap[dir2] <= 12 then
                 setExit(ID2,ID1,stubmap[dir2])
@@ -509,6 +507,47 @@ local function connect_rooms(ID1, ID2, dir1)
                 setRoomUserData(ID2,"stub " .. dir2, stubmap[dir2])
             end
         end
+    end
+end
+
+local function reconnectRooms(baseRoomID, disconnectedRoomID)
+    local baseAreaID = getRoomArea(baseRoomID)
+    local disconnectedAreaID = getRoomArea(disconnectedRoomID)
+    local roomsToProcess = getAreaRooms(disconnectedAreaID)
+    local roomExits = {}
+
+    for _, id in pairs(roomsToProcess) do
+        roomExits[id] = getRoomExits(id)
+    end
+
+    -- Make sure the directions go both ways
+    for id, exits in pairs(roomExits) do
+        for dir, dest in pairs(exits) do
+            roomExits[dest][reverse_dirs[dir]] = id
+        end
+    end
+
+    local toReconnect = {baseRoomID}
+    local curID
+    local x, y, z, dx, dy, dz
+
+    -- Walk the rooms connected to baseRoomID and change their area.
+    while not table.is_empty(toReconnect) do
+        curID = table.remove(toReconnect)
+        if getRoomArea(curID) == disconnectedAreaID then
+            setRoomArea(curID, baseAreaID)
+            x, y, z = getRoomCoordinates(curID)
+            -- Reconnect all its exits
+            for dir, dest in pairs(roomExits[curID]) do
+                table.insert(toReconnect, dest)
+                dx, dy, dy = unpack(coordmap[dir])
+                setRoomCoordinates(dest, {x+dx, y+dy, z+dz})
+            end
+            roomExits[curID] = nil
+        end
+    end
+    if table.is_empty(getAreaRooms(disconnectedAreaID)) then
+        deleteArea(disconnectedAreaID)
     end
 end
 
@@ -1369,7 +1408,7 @@ function map.eventHandler(event, ...)
                     local udir = unconnected_dir and f"[{unconnected_dir}]" or ""
                     if string.starts(prevAreaName, gmcpArea) then
                         -- Have not changed base area
-                        map.set("unconnected_area", true)
+                        map.set("disconnectedArea", true)
                         local subAreaName = f"{prevAreaName}/{map.prevRoomName}({map.prevRoomID}){udir}"
                         map.set("currentRoomAreaID", findAreaID(subAreaName))
                         display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
@@ -1380,7 +1419,7 @@ function map.eventHandler(event, ...)
                             map.set("currentRoomAreaID", areaID)
                         else
                             -- Need to create a subarea of the other area
-                            map.set("unconnected_area", true)
+                            map.set("disconnectedArea", true)
                             local subAreaName = f"{gmcpArea}/{map.prevRoomName or map.currentRoomName}({map.prevRoomID or map.currentRoomID}){udir}"
                             map.set("currentRoomAreaID", findAreaID(subAreaName))
                             display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
@@ -1396,6 +1435,19 @@ function map.eventHandler(event, ...)
                 end
             else
                 map.set("currentRoomAreaID", getRoomArea(map.currentRoomID))
+                local areaName = getRoomAreaName(map.currentRoomAreaID)
+                if areaName == gmcp.room.info.area then
+                    if map.disconnectedArea and dir then
+                        -- Enters a base area from a disconnected area. Reconnect
+                        reconnectRooms(map.currentRoomID, map.prevRoomID)
+                    end
+                    map.set("disconnectedArea", false)
+                else
+                    if not map.disconnectedArea and dir then
+                        -- Enters a disconnected area from a base area. Reconnect
+                        reconnectRooms(map.prevRoomID, map.currentRoomID)
+                    end
+                end
             end
 
             if dir or unconnected_dir then
