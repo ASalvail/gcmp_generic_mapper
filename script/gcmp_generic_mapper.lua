@@ -146,8 +146,8 @@ local function config()
     --]]
 
     -- setup metatable to store sensitive values
-    local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomArea",
-        "prevRoomID", "prevRoomName", "prevRoomExits", "mode", "version"}
+    local protected = {"mapping", "currentRoomID", "currentRoomName", "currentRoomExits", "currentRoomAreaID",
+        "prevRoomID", "prevRoomName", "prevRoomExits", "prevRoomAreaID", "mode", "version", "unconnected_area"}
     mt = getmetatable(map) or {}
     mt.__index = mt
     mt.__newindex = function(tbl, key, value)
@@ -475,7 +475,6 @@ end
 
 local function connect_rooms(ID1, ID2, dir1)
     -- makes a connection between rooms
-    -- can make backwards connection without a check
     local match = false
     local dir2 = reverse_dirs[dir1]
     -- check handling of custom exits here
@@ -517,7 +516,7 @@ local function stretch_map(dir,x,y,z)
     -- stretches a map to make room for just added room that would overlap with existing room
     local dx,dy,dz
     if not dir then return end
-    for k,v in pairs(getAreaRooms(map.currentRoomArea)) do
+    for k,v in pairs(getAreaRooms(map.currentRoomAreaID)) do
         if v ~= map.currentRoomID then
             dx,dy,dz = getRoomCoordinates(v)
             if dx >= x and string.find(dir,"east") then
@@ -547,7 +546,7 @@ local function create_room(dir, coords)
         map.echo("New Room: " .. map.currentRoomName,false,false,(dir or find_portal or force_portal) and true or false)
 
         addRoom(map.currentRoomID)
-        setRoomArea(map.currentRoomID, map.currentRoomArea)
+        setRoomArea(map.currentRoomID, map.currentRoomAreaID)
         setRoomName(map.currentRoomID, map.currentRoomName)
         setRoomCoordinates(map.currentRoomID, unpack(coords))
 
@@ -570,14 +569,14 @@ local function create_room(dir, coords)
             setRoomUserData(map.currentRoomID,"portals",tostring(map.prevRoomID)..":"..(find_portal or force_portal))
         end
         
-        local pos_rooms = getRoomsByPosition(map.currentRoomArea, unpack(coords))
+        local pos_rooms = getRoomsByPosition(map.currentRoomAreaID, unpack(coords))
         if not (find_portal or force_portal) and map.configs.stretch_map and table.size(pos_rooms) > 1 then
             stretch_map(dir,unpack(coords))
         end
     end
 end
 
-local function find_area(name)
+local function findAreaID(name)
     -- searches for the named area, and creates it if necessary
     local areas = getAreaTable()
     local areaID
@@ -591,7 +590,6 @@ local function find_area(name)
     if not areaID then
         show_err("Invalid Area. No such area found, and area could not be added.",true)
     end
-    map.set("currentRoomArea", areaID)
     return areaID
 end
 
@@ -967,6 +965,17 @@ function map.start_mapping()
 
     map.set("mapping", true)
     if not roomExists(map.currentRoomID) then
+        local areaID = findAreaID(string.trim(gmcp.room.info.area))
+        if table.is_empty(getAreaRooms(areaID)) then
+            -- New area
+            map.set("currentRoomAreaID", areaID)
+            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the new area ".. gmcp.room.info.area)
+        else
+            -- Area already exists, start in a sub-area
+            local subAreaName = f"{gmcpArea}/{map.currentRoomName}({map.currentRoomID})"
+            map.set("currentRoomAreaID", findAreaID(subAreaName))
+            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+        end
         create_room(nil, {0,0,0})
     end
     centerview(map.currentRoomID)
@@ -980,9 +989,9 @@ end
 function map.set_area(name)
     -- assigns the current room to the area given, creates the area if necessary
     if map.mapping then
-        find_area(name)
-        if map.currentRoomID and getRoomArea(map.currentRoomID) ~= map.currentRoomArea then
-            setRoomArea(map.currentRoomID,map.currentRoomArea)
+        findAreaID(name)
+        if map.currentRoomID and getRoomArea(map.currentRoomID) ~= map.currentRoomAreaID then
+            setRoomArea(map.currentRoomID,map.currentRoomAreaID)
             centerview(map.currentRoomID)
         end
     else
@@ -1059,7 +1068,7 @@ function map.merge_rooms()
     if map.mapping then
         map.echo("Merging rooms")
         local x,y,z = getRoomCoordinates(map.currentRoomID)
-        local rooms = getRoomsByPosition(map.currentRoomArea,x,y,z)
+        local rooms = getRoomsByPosition(map.currentRoomAreaID,x,y,z)
         local exits, portals, room, cmd, curportals
         local room_count = 1
         for k,v in pairs(rooms) do
@@ -1292,22 +1301,16 @@ function map.eventHandler(event, ...)
             map.echo("Room hasn't changed.", true)
             return
         end
-        map.set("prevRoomID", map.currentRoomID)
-        map.set("currentRoomID", roomID)
+        local roomExists = roomExists(roomID)
 
+        -- save current info as previous' room info
+        map.set("prevRoomID", map.currentRoomID)
         map.set("prevRoomName", map.currentRoomName)
         map.set("prevRoomExits", map.currentRoomExits)
+        map.set("prevRoomAreaID", map.currentRoomAreaID)
 
-        -- find the connection direction
-        local dir
-        if map.prevRoomID then 
-            for k, v in pairs(map.prevRoomExits) do
-                if stubmap[k] <= 10 and v == map.currentRoomID then -- avoid 'in' and 'out' that don't have a direction.
-                    dir = k 
-                    break 
-                end 
-            end
-        end
+        -- populate current room's info
+        map.set("currentRoomID", roomID)
 
         local parsed_exits = {}
         for k, v in pairs(gmcp.room.info.exits) do
@@ -1317,29 +1320,87 @@ function map.eventHandler(event, ...)
         table.update(parsed_exits, getRoomExits(map.currentRoomID) or {})  -- Adds already mapped exits.
         map.set("currentRoomExits", parsed_exits)
 
-        if roomExists(map.currentRoomID) then
+        if roomExists then
             map.set("currentRoomName", getRoomName(map.currentRoomID))
-            map.set("currentRoomArea", getRoomArea(map.currentRoomID))
-            
             -- check handling of custom exits here
             for i = 13,#stubmap do
                 map.currentRoomExits[stubmap[i]] = tonumber(getRoomUserData(map.currentRoomID,"exit " .. stubmap[i]))
             end
         else
-            local areaID = find_area(string.trim(gmcp.room.info.area)) or -1
-            map.set("currentRoomArea", areaID)
             map.set("currentRoomName", string.trim(gmcp.room.info.name))
-
-            if map.mapping then -- doesn't work with portals!
-                local x,y,z = getRoomCoordinates(map.prevRoomID)
-                local dx,dy,dz = unpack(coordmap[stubmap[dir]])
-                display("Creating a room" .. map.currentRoomName.. ":".. tostring(map.currentRoomID).. " from "..dir..tostring(map.prevRoomID))
-                create_room(dir, {x+dx,y+dy,z+dz})
-            end
         end
 
-        if map.mapping then 
-            connect_rooms(map.prevRoomID, map.currentRoomID, dir)
+        if map.mapping then
+            -- find the connection direction
+            local dir, unconnected_dir
+            if map.prevRoomID then 
+                for k, v in pairs(map.prevRoomExits) do
+                    if v == map.currentRoomID then
+                        if stubmap[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
+                            dir = k
+                            break
+                        else
+                            unconnected_dir = k
+                        end
+                    end
+                end
+            end
+                
+            if not roomExists then
+                -- Need to create room
+                local gmcpArea = string:trim(gmcp.room.info.area)
+                local prevAreaName = map.prevRoomAreaID and getRoomAreaName(map.prevRoomAreaID) or ""
+
+                if dir then
+                    -- Can share the same [sub]area as the previous room
+                    if string.starts(prevAreaName, gmcpArea) then
+                        -- Have not changed base area
+                        map.set("currentRoomAreaID", map.prevRoomAreaID)
+                    else
+                        map.set("currentRoomAreaID", findAreaID(gmcpArea))
+                    end
+                    local x,y,z = getRoomCoordinates(map.prevRoomID)
+                    local dx,dy,dz = unpack(coordmap[stubmap[dir]])
+                    display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] from "..dir.." "..
+                            tostring(map.prevRoomID) .. " in area " .. getRoomAreaName(map.currentRoomAreaID))
+                    create_room(dir, {x+dx,y+dy,z+dz})
+                else
+                    -- Can't share same area
+                    local udir = unconnected_dir and f"[{unconnected_dir}]" or ""
+                    if string.starts(prevAreaName, gmcpArea) then
+                        -- Have not changed base area
+                        map.set("unconnected_area", true)
+                        local subAreaName = f"{prevAreaName}/{map.prevRoomName}({map.prevRoomID}){udir}"
+                        map.set("currentRoomAreaID", findAreaID(subAreaName))
+                        display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+                    else
+                        -- Need to change area anyway
+                        local areaID = findAreaID(gmcpArea)
+                        if table.is_empty(getAreaRooms(areaID)) then
+                            map.set("currentRoomAreaID", areaID)
+                        else
+                            -- Need to create a subarea of the other area
+                            map.set("unconnected_area", true)
+                            local subAreaName = f"{gmcpArea}/{map.prevRoomName or map.currentRoomName}({map.prevRoomID or map.currentRoomID}){udir}"
+                            map.set("currentRoomAreaID", findAreaID(subAreaName))
+                            display("Creating room " .. map.currentRoomName.. "[".. tostring(map.currentRoomID).. "] in the sub-area ".. subAreaName)
+                        end
+                    end
+                    if not unconnected_dir then
+                        -- Notify the player of the break and offer to make a portal
+                        map.echo("This room doesn't connect to the precedent through a cardinal exit or a recognized special direction.")
+                        map.echo("To enable speedwalking through that exit, please `add portal <entry command>`.")
+                        map.echo("This will link the previous room to this one using the command.")
+                    end
+                    create_room(nil, {0,0,0})
+                end
+            else
+                map.set("currentRoomAreaID", getRoomArea(map.currentRoomID))
+            end
+
+            if dir or unconnected_dir then
+                connect_rooms(map.prevRoomID, map.currentRoomID, dir or unconnected_dir)
+            end
             centerview(map.currentRoomID)
         end
         if walking and map.configs.speedwalk_wait then
