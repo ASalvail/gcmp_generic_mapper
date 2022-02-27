@@ -299,6 +299,29 @@ function map.echo(what, debug, err, wait)
     print_echoes(what, debug, err)
 end
 
+local function getAreaIDByMatch(areaname, exact)
+    local areaname = areaname:lower()
+    local list = getAreaTable()
+
+    -- iterate over the list of areas, matching them with substring match.
+    -- if we get match a single area, then return its ID, otherwise return
+    -- 'false' and a message that there are than one are matches
+    local returnid, fullareaname, multipleareas = nil, nil, {}
+    for area, id in pairs(list) do
+        if (not exact and area:lower():find(areaname, 1, true)) or (exact and areaname == area:lower()) then
+            returnid = id
+            fullareaname = area
+            multipleareas[#multipleareas+1] = area
+        end
+    end
+
+    if #multipleareas == 1 then
+        return returnid, fullareaname
+    else
+        return nil, nil, multipleareas
+    end
+end
+
 function map.echoRoomList(areaname, exact)
     local areaid, msg, multiples
     local listcolor, othercolor = "DarkSlateGrey","LightSlateGray"
@@ -306,7 +329,7 @@ function map.echoRoomList(areaname, exact)
         areaid = tonumber(areaname)
         msg = getAreaTableSwap()[areaid]
     else
-        areaid, msg, multiples = map.findAreaID(areaname, exact)
+        areaid, msg, multiples = getAreaIDByMatch(areaname, exact)
     end
     if areaid then
         local roomlist, endresult = getAreaRooms(areaid) or {}, {}
@@ -383,9 +406,11 @@ function map.echoAreaList()
     cecho(string.format("<%s>Total amount of rooms in this map: %s\n", listcolor, totalroomcount))
 end
 
+
 ------------------
 -- Room Management
 ------------------
+
 local function add_door(roomID, dir, status)
     -- create or remove a door in the designated direction
     -- consider options for adding pickable and passable information
@@ -434,9 +459,9 @@ end
 local function find_room(nameOrID, area)
     -- looks for rooms with a particular name, and if given, in a specific area
     local rooms = searchRoom(nameOrID)  -- {room_id: room_name}
+    local area_id
     if type(area) == "string" then
         local areas = getAreaTable() or {} -- {a_name: a_ID}
-        local area_id
         for k,v in pairs(areas) do
             if string.lower(k) == string.lower(area) then
                 area_id = v
@@ -630,29 +655,6 @@ local function findAreaID(name)
         show_err("Invalid Area. No such area found, and area could not be added.",true)
     end
     return areaID
-end
-
-function map.findAreaID(areaname, exact)
-    local areaname = areaname:lower()
-    local list = getAreaTable()
-
-    -- iterate over the list of areas, matching them with substring match.
-    -- if we get match a single area, then return its ID, otherwise return
-    -- 'false' and a message that there are than one are matches
-    local returnid, fullareaname, multipleareas = nil, nil, {}
-    for area, id in pairs(list) do
-        if (not exact and area:lower():find(areaname, 1, true)) or (exact and areaname == area:lower()) then
-            returnid = id
-            fullareaname = area
-            multipleareas[#multipleareas+1] = area
-        end
-    end
-
-    if #multipleareas == 1 then
-        return returnid, fullareaname
-    else
-        return nil, nil, multipleareas
-    end
 end
 
 -------------------
@@ -991,9 +993,11 @@ end
 function map.set_area(name)
     -- assigns the current room to the area given, creates the area if necessary
     if map.mapping then
-        findAreaID(name)
-        if map.currentRoomID and getRoomArea(map.currentRoomID) ~= map.currentRoomAreaID then
-            setRoomArea(map.currentRoomID,map.currentRoomAreaID)
+        local areaID = findAreaID(name)
+        if map.currentRoomID and getRoomArea(map.currentRoomID) ~= areaID then
+            setRoomArea(map.currentRoomID, areaID)
+            map.set("currentRoomAreaID", areaID)
+            map.echo(f"Moved {map.currentRoomName} to {getRoomAreaName(map.currentRoomAreaID)}")
             centerview(map.currentRoomID)
         end
     else
