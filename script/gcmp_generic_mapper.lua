@@ -1368,9 +1368,11 @@ function map.eventHandler(event, ...)
                     end
                     if not unconnected_dir then
                         -- Notify the player of the break and offer to make a portal
-                        map.echo("This room doesn't connect to the precedent through a cardinal exit or a recognized special direction. \z
-                                    To enable speedwalking through that exit, please `add portal <entry command>`. \z
-                                    This will link the previous room to this one using the command.")
+                        map.echo(
+                            "This room doesn't connect to the precedent through a cardinal " ..
+                            "exit or a recognized special direction. To enable speedwalking " ..
+                            "through that exit, please `add portal <entry command>`. " ..
+                            "This will link the previous room to this one using the command.")
                     end
                     create_room(nil, {0,0,0})
                 end
