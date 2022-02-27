@@ -892,6 +892,8 @@ function map.set_portal(command)
         local portals = getRoomUserData(map.current_room_id, "portals") or ""
         portals = portals .. "," .. tostring(map.prev_room_id)..":"..command
         setRoomUserData(map.current_room_id,"portals",portals)
+        setRoomCharColor(map.current_room_id, 255, 255, 255)
+        setRoomCharColor(map.prev_room_id, 255, 255, 255)
         centerview(map.current_room_id)
     else
         map.echo("Not mapping",false,true)
