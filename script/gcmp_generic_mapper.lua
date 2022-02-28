@@ -940,7 +940,7 @@ end
 
 function map.start_mapping()
     -- starts mapping
-    map.set("mapping", true)
+    map.set("mapping", false)
     send("look")
 end
 
