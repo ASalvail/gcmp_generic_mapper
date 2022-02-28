@@ -848,9 +848,11 @@ function map.updateVersion()
 end
 --]]
 
+
 ---------------
 -- Map Commands
 ---------------
+
 function map.set_exit(dir,room_id)
     -- used to set unusual exits from the room you are standing in
     if map.mapping then
@@ -1400,6 +1402,13 @@ function map.eventHandler(event, ...)
 
             if dir or unconnected_dir then
                 connect_rooms(map.prev_room_id, map.current_room_id, dir or unconnected_dir)
+            end
+
+            -- link rooms without needing to use every exits
+            for dir, dest in pairs(map.current_room_exits) do
+                if roomExists(dest) then
+                    connect_rooms(map.current_room_id, dest, dir)
+                end
             end
         end
         centerview(map.current_room_id)
