@@ -1283,7 +1283,7 @@ function map.eventHandler(event, ...)
             map.echo("Room hasn't changed.", true)
             return
         end
-        local roomExists = roomExists(room_id)
+        local room_exists = roomExists(room_id)
 
         -- save current info as previous' room info
         map.set("prev_room_id", map.current_room_id)
@@ -1302,7 +1302,7 @@ function map.eventHandler(event, ...)
         table.update(parsed_exits, getRoomExits(map.current_room_id) or {})  -- Adds already mapped exits.
         map.set("current_room_exits", parsed_exits)
 
-        if roomExists then
+        if room_exists then
             map.set("current_room_name", getRoomName(map.current_room_id))
             -- check handling of custom exits here
             for i = 13,#stub_map do
@@ -1328,7 +1328,7 @@ function map.eventHandler(event, ...)
                 end
             end
                 
-            if not roomExists then
+            if not room_exists then
                 -- Need to create room
                 local gmcp_area = string.trim(gmcp.room.info.area)
                 local prev_area_name = map.prev_room_area_id and getRoomAreaName(map.prev_room_area_id) or ""
