@@ -79,6 +79,7 @@ local err_tag = "<255,0,0>(<178,34,34>error<255,0,0>): <255,255,255>"
 --------------------------
 map.defaults = {
     mode = "normal", -- can be normal, or complex
+    offset_room_id = 10000, -- Set to 0 to disable.
     stretch_map = true,
     speedwalk_delay = 0.2,
     speedwalk_wait = true,
@@ -142,7 +143,8 @@ local function config()
 
     -- setup metatable to store sensitive values
     local protected = {"mapping", "current_room_id", "current_room_name", "current_room_exits", "current_room_area_id",
-        "prev_room_id", "prev_room_name", "prev_room_exits", "prev_room_area_id", "mode", "version", "disconnected_area"}
+        "prev_room_id", "prev_room_name", "prev_room_exits", "prev_room_area_id", "mode", "version", "disconnected_area",
+        "current_room_id_offset"}
     mt = getmetatable(map) or {}
     mt.__index = mt
     mt.__newindex = function(tbl, key, value)
@@ -630,6 +632,8 @@ end
 
 local function find_area_id(name)
     -- searches for the named area, and creates it if necessary
+    -- If the area can't be found, creates the area or returns `nil`
+    --   if not currently mapping
     local areas = getAreaTable()
     local area_id
     for k,v in pairs(areas) do
@@ -638,9 +642,11 @@ local function find_area_id(name)
             break
         end
     end
-    if not area_id then area_id = addAreaName(name) end
-    if not area_id then
-        show_err("Invalid Area. No such area found, and area could not be added.",true)
+    if not area_id and map.mapping then
+        area_id = addAreaName(name)
+        if not area_id then
+            show_err("Invalid Area. No such area found, and area could not be added.",true)
+        end
     end
     return area_id
 end
@@ -928,31 +934,9 @@ function map.set_mode(mode)
 end
 
 function map.start_mapping()
-    -- starts mapping, and sets the current area to the given one, or uses the current one
-    if not map.current_room_id then
-        show_err("Room detection not yet working, try looking or moving.")
-        return
-    end
-
+    -- starts mapping
     map.set("mapping", true)
-    if not roomExists(map.current_room_id) then
-        local gmcp_area = string.trim(gmcp.room.info.area)
-        local area_id = find_area_id(gmcp_area)
-        if table.is_empty(getAreaRooms(area_id)) then
-            -- New area
-            map.set("current_room_area_id", area_id)
-        else
-            -- Area already exists, start in a sub-area
-            local sub_area_name = f"{gmcp_area}/{map.current_room_name}({map.current_room_id})"
-            map.set("current_room_area_id", find_area_id(sub_area_name))
-            map.set("disconnected_area", true)
-        end
-        create_room(nil, {0,0,0})
-    else
-        map.set("current_room_area_id", getRoomArea(map.current_room_id))
-        map.set("disconnected_area", getRoomAreaName(map.current_room_area_id) ~= gmcp.room.info.area)
-    end
-    centerview(map.current_room_id)
+    send("look")
 end
 
 function map.stop_mapping()
@@ -1276,7 +1260,16 @@ function map.eventHandler(event, ...)
             display(gmcp.room.info)
         end
 
-        local room_id = tonumber(gmcp.room.info.num)
+        local base_area_id = find_area_id(string.trim(gmcp.room.info.area))
+        if base_area_id then
+            -- Avoids clash with ID only being unique per area
+            map.set("current_room_id_offset", map.configs.offset_room_id * base_area_id)
+        else
+            map.echo("Unknown area, abort mapping operations for that room.", true)
+            return -- Can't process anything on an unknown map.
+        end
+
+        local room_id = tonumber(gmcp.room.info.num) + map.current_room_id_offset
         if room_id == map.current_room_id and #map.current_room_exits == #gmcp.room.info.exits then
             map.echo("Room hasn't changed.", true)
             return
@@ -1295,7 +1288,7 @@ function map.eventHandler(event, ...)
         local parsed_exits = {}
         for k, v in pairs(gmcp.room.info.exits) do
             k = exit_map[k] or k  -- The script assumes that directions are longform
-            parsed_exits[k] = tonumber(v)
+            parsed_exits[k] = tonumber(v) + map.current_room_id_offset
         end
         table.update(parsed_exits, getRoomExits(map.current_room_id) or {})  -- Adds already mapped exits.
         map.set("current_room_exits", parsed_exits)
@@ -1315,7 +1308,7 @@ function map.eventHandler(event, ...)
             local dir, unconnected_dir
             if map.prev_room_id then 
                 for k, v in pairs(map.prev_room_exits) do
-                    if v == map.current_room_id then
+                    if v % map.configs.offset_room_id == map.current_room_id % map.configs.offset_room_id then
                         if stub_map[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
                             dir = k
                             break
@@ -1325,7 +1318,7 @@ function map.eventHandler(event, ...)
                     end
                 end
             end
-                
+
             if not room_exists then
                 -- Need to create room
                 local gmcp_area = string.trim(gmcp.room.info.area)
