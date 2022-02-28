@@ -559,7 +559,7 @@ local function reconnect_rooms(base_room_id, disconnected_room_id)
         for dir, dest in pairs(room_exits[cur_id]) do
             if getRoomArea(dest) == disconnected_area_id then
                 table.insert(to_reconnect, dest)
-                dx, dy, dz = unpack(coord_map[stub_map[dir]])
+                dx, dy, dz = table.unpack(coord_map[stub_map[dir]])
                 setRoomCoordinates(dest, x+dx, y+dy, z+dz)
             end
         end
@@ -606,7 +606,7 @@ local function create_room(dir, coords)
         addRoom(map.current_room_id)
         setRoomArea(map.current_room_id, map.current_room_area_id)
         setRoomName(map.current_room_id, map.current_room_name)
-        setRoomCoordinates(map.current_room_id, unpack(coords))
+        setRoomCoordinates(map.current_room_id, table.unpack(coords))
 
         for k, _ in pairs(map.current_room_exits) do
             if stub_map[k] then
@@ -623,9 +623,9 @@ local function create_room(dir, coords)
             end
         end
 
-        local pos_rooms = getRoomsByPosition(map.current_room_area_id, unpack(coords))
-        if map.configs.stretch_map and table.size(pos_rooms) > 1 then
-            stretch_map(dir,unpack(coords))
+        local pos_rooms = getRoomsByPosition(map.current_room_area_id, table.unpack(coords))
+        if map.configs.stretch_map and #pos_rooms > 1 then
+            stretch_map(dir, table.unpack(coords))
         end
     end
 end
@@ -1057,7 +1057,7 @@ function map.merge_rooms()
                     if portals ~= "" then
                         portals = string.split(portals, ",")
                         for _,v1 in ipairs(portals) do
-                            room,cmd = unpack(string.split(v1,":"))
+                            room, cmd = table.unpack(string.split(v1,":"))
                             addSpecialExit(tonumber(room), map.current_room_id, cmd)
                             cur_portals = getRoomUserData(map.current_room_id, "portals") or ""
                             if not string.find(cur_portals, room) then
@@ -1203,7 +1203,7 @@ function map.import_area(name)
         addRoom(id)
         setRoomName(id, v.name)
         setRoomArea(id, area_id)
-        setRoomCoordinates(id, unpack(v.coords))
+        setRoomCoordinates(id, table.unpack(v.coords))
         if type(v.stubs) == "table" then
             for _, j in pairs(v.stubs) do
                 setExitStub(id, j, true)
@@ -1338,7 +1338,7 @@ function map.eventHandler(event, ...)
                         map.set("current_room_area_id", find_area_id(gmcp_area))
                     end
                     local x,y,z = getRoomCoordinates(map.prev_room_id)
-                    local dx,dy,dz = unpack(coord_map[stub_map[dir]])
+                    local dx,dy,dz = table.unpack(coord_map[stub_map[dir]])
                     map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..dir.." "..
                             tostring(map.prev_room_id) .. " in area " .. getRoomAreaName(map.current_room_area_id), true)
                     create_room(dir, {x+dx,y+dy,z+dz})
