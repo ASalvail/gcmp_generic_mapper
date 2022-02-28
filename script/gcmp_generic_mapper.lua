@@ -687,7 +687,13 @@ continue_walk = function(new_room)
     end
     -- send command if we don't need to wait
     if not new_room then
-        send(table.remove(map.walk_dirs,1))
+        local walk_dir = table.remove(map.walk_dirs, 1)
+        if walk_dir:starts("script:") then
+            walk_dir = walk_dir:gsub("script:", "")
+            load(walk_dir)()
+        else
+            send(walk_dir, false)    
+        end
         -- check to see if we are done
         if #map.walk_dirs == 0 then
             walking = false
