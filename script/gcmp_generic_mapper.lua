@@ -747,7 +747,12 @@ function map.speed_walk(room_id, walk_path, walk_dirs)
         continue_walk()
     else
         for _,dir in ipairs(walk_dirs) do
-            send(dir)
+            if dir:starts("script:") then
+                dir = dir:gsub("script:", "")
+                load(dir)()
+            else
+                send(dir, false)    
+            end
         end
         walking = false
         raiseEvent("sysSpeedwalkFinished")
@@ -1458,5 +1463,4 @@ function map.eventHandler(event, ...)
 end
 
 -- TODO: Remove this, for debug only
-send('look')
 map.eventHandler("sysInstall")
