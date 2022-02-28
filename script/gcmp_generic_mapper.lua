@@ -690,7 +690,7 @@ continue_walk = function(new_room)
         local walk_dir = table.remove(map.walk_dirs, 1)
         if walk_dir:starts("script:") then
             walk_dir = walk_dir:gsub("script:", "")
-            load(walk_dir)()
+            loadstring(walk_dir)()
         else
             send(walk_dir, false)    
         end
@@ -755,7 +755,7 @@ function map.speed_walk(room_id, walk_path, walk_dirs)
         for _,dir in ipairs(walk_dirs) do
             if dir:starts("script:") then
                 dir = dir:gsub("script:", "")
-                load(dir)()
+                loadstring(dir)()
             else
                 send(dir, false)    
             end
