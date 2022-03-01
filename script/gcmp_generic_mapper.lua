@@ -688,6 +688,13 @@ continue_walk = function(new_room)
     -- send command if we don't need to wait
     if not new_room then
         local walk_dir = table.remove(map.walk_dirs, 1)
+        local walk_path = tonumber(table.remove(map.walk_path, 1))
+        if walk_path ~= map.current_room_id then
+            display("Expected "..walk_path.." but is at "..map.current_room_id)
+            map.echo("### Stopping speedwalk; deviation detected. ###")
+            map.stop_speed_walk()
+            return
+        end
         if walk_dir:starts("script:") then
             walk_dir = walk_dir:gsub("script:", "")
             loadstring(walk_dir)()
@@ -711,8 +718,8 @@ end
 function map.speed_walk(room_id, walk_path, walk_dirs)
     room_id = room_id or speedWalkPath[#speedWalkPath]
     getPath(map.current_room_id, room_id)
-    walk_path = speedWalkPath
-    walk_dirs = speedWalkDir
+    walk_path = table.deepcopy(speedWalkPath)
+    walk_dirs = table.deepcopy(speedWalkDir)
     if #speedWalkPath == 0 then
         map.echo("No path to chosen room found.", false, true)
         return
@@ -750,14 +757,20 @@ function map.speed_walk(room_id, walk_path, walk_dirs)
     walking = true
     if map.configs.speedwalk_wait or map.configs.speedwalk_delay > 0 then
         map.walk_dirs = walk_dirs
+        map.walk_path = walk_path
         continue_walk()
     else
-        for _,dir in ipairs(walk_dirs) do
+        for i, dir in ipairs(walk_dirs) do
+            if tonumber(walk_path[i]) ~= map.current_room_id then
+                map.echo("### Stopping speedwalk; deviation detected. ###")
+                map.stop_speed_walk()
+                return
+            end
             if dir:starts("script:") then
                 dir = dir:gsub("script:", "")
                 loadstring(dir)()
             else
-                send(dir, false)    
+                send(dir, false)
             end
         end
         walking = false
@@ -798,7 +811,7 @@ end
 function map.stop_speed_walk()
     if #speedWalkDir ~= 0 then
         walking = false
-        map.walk_dirs, speedWalkDir, speedWalkPath, speedWalkWeight = {}, {}, {}, {}
+        map.walk_dirs, map.walk_path, speedWalkDir, speedWalkPath, speedWalkWeight = {}, {}, {}, {}, {}
         raiseEvent("sysSpeedwalkStopped")
         map.echo("Speedwalking stopped.")
     else
