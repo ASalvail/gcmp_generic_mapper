@@ -1363,18 +1363,20 @@ function map.eventHandler(event, ...)
                         map.set("disconnected_area", true)
                         local subAreaName = f"{prev_area_name}/{map.prev_room_name}({map.prev_room_id}){udir}"
                         map.set("current_room_area_id", find_area_id(subAreaName))
-                        display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName)
+                        map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName, true)
                     else
                         -- Need to change area anyway
                         local area_id = find_area_id(gmcp_area)
                         if table.is_empty(getAreaRooms(area_id)) then
+                            -- this is a new area
                             map.set("current_room_area_id", area_id)
+                            map.set("disconnected_area", false)
                         else
                             -- Need to create a subarea of the other area
                             map.set("disconnected_area", true)
                             local subAreaName = f"{gmcp_area}/{map.prev_room_name or map.current_room_name}({map.prev_room_id or map.current_room_id}){udir}"
                             map.set("current_room_area_id", find_area_id(subAreaName))
-                            display("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName)
+                            map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] in the sub-area ".. subAreaName, true)
                         end
                     end
                     if not unconnected_dir then
