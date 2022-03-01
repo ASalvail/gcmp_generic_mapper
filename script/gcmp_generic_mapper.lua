@@ -961,8 +961,15 @@ function map.set_area(name)
         local area_id = find_area_id(name)
         if map.current_room_id and getRoomArea(map.current_room_id) ~= area_id then
             setRoomArea(map.current_room_id, area_id)
+            if table.is_empty(getAreaRooms(map.current_area_id)) then
+                deleteArea(map.current_area_id)
+            end
             map.set("current_room_area_id", area_id)
-            map.echo(f"Moved {map.current_room_name} to {get_room_area_name(map.current_room_area_id)}")
+            local area_name = getRoomAreaName(map.current_room_area_id)
+            if string.begins(area_name, string.trim(gmcp.room.info.area)) then
+                map.set("disconnected_area", false)
+            end
+            map.echo(f"Moved {map.current_room_name} to {area_name}")
             centerview(map.current_room_id)
         end
     else
