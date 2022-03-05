@@ -916,15 +916,22 @@ function map.set_exit(dir,room_id)
     end
 end
 
-function map.set_portal(command)
+function map.set_portal(command, back_command)
     -- creates a new portal going from the last room to the current one
     if map.mapping then
         map.echo("Adding portal destination, linking rooms")
         addSpecialExit(map.prev_room_id, map.current_room_id, command)
         local portals = getRoomUserData(map.current_room_id, "portals") or ""
         portals = portals .. "," .. tostring(map.prev_room_id)..":"..command
-        setRoomUserData(map.current_room_id,"portals",portals)
-        centerview(map.current_room_id)
+        setRoomUserData(map.current_room_id, "portals", portals)
+
+        -- Backward portal
+        if back_command then
+            addSpecialExit(map.current_room_id, map.prev_room_id, back_command)
+            portals = getRoomUserData(map.prev_room_id, "portals") or ""
+            portals = portals .. "," .. tostring(map.current_room_id)..":"..command
+            setRoomUserData(map.prev_room_id, "portals", portals)
+        end
     else
         map.echo("Not mapping",false,true)
     end
