@@ -142,8 +142,8 @@ local function config()
     --]]
 
     -- setup metatable to store sensitive values
-    local protected = {"mapping", "current_room_id", "current_room_name", "current_room_exits", "current_room_area_id",
-        "prev_room_id", "prev_room_name", "prev_room_exits", "prev_room_area_id", "mode", "version", "disconnected_area",
+    local protected = {"mapping", "current_room_id", "current_room_name", "current_room_exits", "current_room_area_id", "current_gmcp_area_name",
+        "prev_room_id", "prev_room_name", "prev_room_exits", "prev_room_area_id", "prev_gmcp_area_name", "mode", "version", "disconnected_area",
         "current_room_id_offset"}
     mt = getmetatable(map) or {}
     mt.__index = mt
@@ -489,6 +489,10 @@ local function get_room_stubs(room_id)
 end
 
 local function connect_rooms(ID1, ID2, dir1)
+    if not stub_map[dir1] then
+        -- Don't connect rooms through special directions
+        return
+    end
     -- makes a connection between rooms
     local dir2 = reverse_dirs[dir1]
     -- check handling of custom exits here
@@ -1319,16 +1323,21 @@ function map.eventHandler(event, ...)
         map.set("prev_room_name", map.current_room_name)
         map.set("prev_room_exits", map.current_room_exits)
         map.set("prev_room_area_id", map.current_room_area_id)
+        map.set("prev_gmcp_area_name", map.current_gmcp_area_name)
 
         -- populate current room's info
         map.set("current_room_id", room_id)
+        map.set("current_gmcp_area_name", gmcp.room.info.area)
 
         local parsed_exits = {}
+        -- Assumes that all the gmcp exits lead to the same area, hence the same offset.
         for k, v in pairs(gmcp.room.info.exits) do
             k = exit_map[k] or k  -- The script assumes that directions are longform
             parsed_exits[k] = tonumber(v) + map.current_room_id_offset
         end
-        table.update(parsed_exits, getRoomExits(map.current_room_id) or {})  -- Adds already mapped exits.
+        -- Adds already mapped exits. Could update fixed area offsets
+        parsed_exits = table.update(parsed_exits, getRoomExits(map.current_room_id) or {})
+        parsed_exits = table.update(parsed_exits, getSpecialExitsSwap(map.current_room_id) or {})
         map.set("current_room_exits", parsed_exits)
 
         if room_exists then
@@ -1343,16 +1352,36 @@ function map.eventHandler(event, ...)
 
         if map.mapping then
             -- find the connection direction
-            local dir, unconnected_dir
-            if map.prev_room_id then 
+            -- The connection direction detection algorithm assumes that room
+            -- numbers are unique within a given area.
+            local card_dir, unconnected_dir
+            local min_weights = tonumber('inf')
+            if map.prev_room_id then
+                local exit_weights = getExitWeights(map.prev_room_id)
+                local w
                 for k, v in pairs(map.prev_room_exits) do
                     if v % map.configs.offset_room_id == map.current_room_id % map.configs.offset_room_id then
-                        if stub_map[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
-                            dir = k
-                            break
+                        if stub_map[k] and stub_map[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
+                            card_dir = k
                         else
-                            unconnected_dir = k
+                            -- Connects through the udir of least weight
+                            w = exit_weights[k] or 0
+                            if w < min_weights then
+                                min_weights = w
+                                unconnected_dir = k
+                            end
                         end
+                    end
+                end
+                map.echo("##### have "..(card_dir or "").." and "..(unconnected_dir or ""))
+                if card_dir and unconnected_dir then
+                    -- In case of confusion, keep same area cdir and diff area udir
+                    if map.prev_gmcp_area_name == map.current_gmcp_area_name then
+                        unconnected_dir = nil
+                        map.echo("Keeping cardinal dir")
+                    else
+                        card_dir = nil
+                        map.echo("Keeping unconnected dir")
                     end
                 end
             end
@@ -1362,7 +1391,7 @@ function map.eventHandler(event, ...)
                 local gmcp_area = string.trim(gmcp.room.info.area)
                 local prev_area_name = map.prev_room_area_id and getRoomAreaName(map.prev_room_area_id) or ""
 
-                if dir then
+                if card_dir then
                     -- Can share the same [sub]area as the previous room
                     if string.starts(prev_area_name, gmcp_area) then
                         -- Have not changed base area
@@ -1371,10 +1400,10 @@ function map.eventHandler(event, ...)
                         map.set("current_room_area_id", find_area_id(gmcp_area))
                     end
                     local x,y,z = getRoomCoordinates(map.prev_room_id)
-                    local dx,dy,dz = unpack(coord_map[stub_map[dir]])
-                    map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..dir.." "..
+                    local dx,dy,dz = unpack(coord_map[stub_map[card_dir]])
+                    map.echo("Creating room " .. map.current_room_name.. "[".. tostring(map.current_room_id).. "] from "..card_dir.." "..
                             tostring(map.prev_room_id) .. " in area " .. getRoomAreaName(map.current_room_area_id), true)
-                    create_room(dir, {x+dx,y+dy,z+dz})
+                    create_room(card_dir, {x+dx,y+dy,z+dz})
                 else
                     -- Can't share same area
                     local udir = unconnected_dir and f"[{unconnected_dir}]" or ""
@@ -1413,14 +1442,14 @@ function map.eventHandler(event, ...)
                 map.set("current_room_area_id", getRoomArea(map.current_room_id))
                 local areaName = getRoomAreaName(map.current_room_area_id)
                 if areaName == gmcp.room.info.area then
-                    if map.disconnected_area and dir then
+                    if map.disconnected_area and card_dir then
                         -- Enters a base area from a disconnected area. Reconnect
                         display("Reconnecting area...")
                         reconnect_rooms(map.current_room_id, map.prev_room_id)
                     end
                     map.set("disconnected_area", false)
                 else
-                    if not map.disconnected_area and dir then
+                    if not map.disconnected_area and card_dir then
                         -- Enters a disconnected area from a base area. Reconnect
                         reconnect_rooms(map.prev_room_id, map.current_room_id)
                         map.set("disconnected_area", false)
@@ -1431,8 +1460,8 @@ function map.eventHandler(event, ...)
                 end
             end
 
-            if dir or unconnected_dir then
-                connect_rooms(map.prev_room_id, map.current_room_id, dir or unconnected_dir)
+            if card_dir or unconnected_dir then
+                connect_rooms(map.prev_room_id, map.current_room_id, card_dir or unconnected_dir)
             end
 
             -- link rooms without needing to use every exits
