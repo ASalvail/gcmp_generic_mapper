@@ -1373,15 +1373,14 @@ function map.eventHandler(event, ...)
                         end
                     end
                 end
-                map.echo("##### have "..(card_dir or "").." and "..(unconnected_dir or ""))
                 if card_dir and unconnected_dir then
                     -- In case of confusion, keep same area cdir and diff area udir
                     if map.prev_gmcp_area_name == map.current_gmcp_area_name then
                         unconnected_dir = nil
-                        map.echo("Keeping cardinal dir")
+                        map.echo("Two possibilities: keeping cardinal dir", true)
                     else
                         card_dir = nil
-                        map.echo("Keeping unconnected dir")
+                        map.echo("Two possibilities: keeping unconnected dir", true)
                     end
                 end
             end
