@@ -985,8 +985,8 @@ function map.set_area(name)
         local area_id = find_area_id(name)
         if map.current_room_id and getRoomArea(map.current_room_id) ~= area_id then
             setRoomArea(map.current_room_id, area_id)
-            if table.is_empty(getAreaRooms(map.current_area_id)) then
-                deleteArea(map.current_area_id)
+            if table.is_empty(getAreaRooms(map.current_room_area_id)) then
+                deleteArea(map.current_room_area_id)
             end
             map.set("current_room_area_id", area_id)
             local area_name = getRoomAreaName(map.current_room_area_id)
@@ -1362,7 +1362,7 @@ function map.eventHandler(event, ...)
                 for k, v in pairs(map.prev_room_exits) do
                     if v % map.configs.offset_room_id == map.current_room_id % map.configs.offset_room_id then
                         if stub_map[k] and stub_map[k] <= 10  then -- avoid 'in' and 'out' that don't have a direction.
-                            card_dir = k
+                            card_dir = card_dir or k -- prefer ewns to ud
                         else
                             -- Connects through the udir of least weight
                             w = exit_weights[k] or 0
