@@ -28,7 +28,7 @@ map.help = {[[
             the map window to the given value
         <link: translate>map translate <english direction> <translated long direction></link>
             <link: translate><translated short direction></link> - Sets the provided translations for
-            the given english direction word.
+            the given english direction word. (Not implemented entirely)
 
     <cyan>Mapping Commands:<reset>
         These are commands used in the process of actually creating a map
