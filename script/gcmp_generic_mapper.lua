@@ -1135,6 +1135,7 @@ function map.show_map(shown)
     local configs = map.configs.map_window
     shown = shown or not configs.shown
     map.configs.map_window.shown = shown
+    --[[
     local x, y, w, h, origin = configs.x, configs.y, configs.w, configs.h, configs.origin
     if string.find(origin, "bottom") then
         if y == 0 or y == "0%" then
@@ -1156,9 +1157,11 @@ function map.show_map(shown)
             x = "-"..x
         end
     end
-    local mapper = Geyser.Mapper:new({name = "my_mapper", x = x, y = y, w = w, h = h})
-    mapper:resize(w, h)
-    mapper:move(x, y)
+    --]]
+    local mapper = Geyser.Mapper:new({autoDock=true, docked=true, embedded=false})
+    
+    --mapper:resize(w, h)
+    --mapper:move(x, y)
     if shown then
         mapper:show()
     else
