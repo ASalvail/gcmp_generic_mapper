@@ -560,7 +560,7 @@ local function reconnect_rooms(base_room_id, disconnected_room_id)
         setRoomArea(cur_id, base_area_id)
         x, y, z = getRoomCoordinates(cur_id)
         -- Reconnect all its exits
-        for dir, dest in pairs(room_exits[cur_id]) do
+        for dir, dest in pairs(room_exits[cur_id] or {}) do
             if getRoomArea(dest) == disconnected_area_id then
                 table.insert(to_reconnect, dest)
                 dx, dy, dz = unpack(coord_map[stub_map[dir]])
@@ -990,7 +990,7 @@ function map.set_area(name)
             end
             map.set("current_room_area_id", area_id)
             local area_name = getRoomAreaName(map.current_room_area_id)
-            if string.begins(area_name, string.trim(gmcp.room.info.area)) then
+            if string.starts(area_name, string.trim(gmcp.room.info.area)) then
                 map.set("disconnected_area", false)
             end
             map.echo(f"Moved {map.current_room_name} to {area_name}")
